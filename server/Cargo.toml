@@ -1,0 +1,12 @@
+[package]
+authors = ["Jesper Håkansson <jesper@jesperh.se>"]
+name = "database-manager"
+version = "0.1.0"
+[dependencies]
+error-chain = "0.10.0"
+error_derive = "0.2.0"
+postgres = "0.15.1"
+rocket = "0.3.2"
+rocket_codegen = "0.3.2"
+rocket_contrib = "0.3.2"
+stdweb = "0.1.1"

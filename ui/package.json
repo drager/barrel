@@ -1,0 +1,20 @@
+{
+  "name": "database-manager",
+  "version": "0.1.0",
+  "description": "Manage your databases",
+  "main": "main.js",
+  "scripts": {
+    "copy-files": "cp public/index.html build/index.html && cp src/index.js build/js/index.js && cp src/main.js build/js/main.js",
+    "build": "elm make --yes src/Main.elm --output build/js/elm.js && npm run copy-files",
+    "watch": "nodemon --watch src --ext elm,js --exec 'npm run -s build'"
+  },
+  "author": "Jesper Håkansson <jesper@jesperh.se>",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "electron": "^1.7.5",
+    "electron-debug": "^1.4.0",
+    "electron-hot-loader": "^0.8.0",
+    "electron-packager": "^9.0.0",
+    "nodemon": "^1.11.0"
+  }
+}
