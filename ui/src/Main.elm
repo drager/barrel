@@ -4,7 +4,7 @@ import Html exposing (Html, text, div, img)
 import Html.Attributes exposing (placeholder, value, class)
 import Html.Events exposing (onClick)
 import Form exposing (Form)
-import Form.Validate as Validate exposing (..)
+import Form.Validate as Validate exposing (field, map5, Validation)
 import Form.Field
 import Form.Input as Input
 import Material
@@ -38,11 +38,11 @@ type alias Model =
 validation : Validation () Connection
 validation =
     map5 Connection
-        (field "host" string)
-        (field "portNumber" int)
-        (field "username" string)
-        (field "password" string)
-        (field "database" string)
+        (field "host" Validate.string)
+        (field "portNumber" Validate.int)
+        (field "username" Validate.string)
+        (field "password" Validate.string)
+        (field "database" Validate.string)
 
 
 init : ( Model, Cmd Msg )
@@ -240,7 +240,7 @@ view : Model -> Html Msg
 view model =
     let
         children =
-            [ div [ styles [ Css.displayFlex, Css.flexDirection Css.column, Css.alignItems Css.center, Css.flexGrow Css.Number 1 ] ] [ connectionFormView model ] ]
+            [ div [ styles [ Css.displayFlex, Css.flexDirection Css.column, Css.alignItems Css.center, Css.flex (Css.int 1) ] ] [ connectionFormView model ] ]
     in
         div []
             [ Layout.render Mdl
