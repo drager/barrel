@@ -1,57 +1,46 @@
-#![feature(link_args)]
+#![feature(plugin)]
+#![plugin(rocket_codegen)]
 
+extern crate rocket;
 extern crate postgres;
-extern crate stdweb;
 extern crate database_manager;
+extern crate rocket_contrib;
+extern crate serde;
+extern crate serde_json;
+#[macro_use]
+extern crate serde_derive;
 
-use std::os::raw::{c_char, c_int, c_void};
-use std::cell::RefCell;
-use std::ptr::null_mut;
-use std::ffi::CString;
-use std::slice;
-use std::str;
-use database_manager::connection::pg_connection::PgDatabaseConnection;
+use rocket_contrib::Json;
 use database_manager::connection::DatabaseConnection;
+use database_manager::connection::pg_connection::PgDatabaseConnection;
+use postgres::params::ConnectParams;
+use postgres::params::Host;
 
-
-// #[cfg_attr(target_arch="asmjs",
-//     link_args="\
-//         -s INVOKE_RUN=0
-// ")]
-// extern "C" {}
-
-#[no_mangle]
-pub extern "C" fn get_name(name: *const u8, len: usize) -> *mut c_char {
-    let name = unsafe { slice::from_raw_parts(name, len) };
-    CString::new(format!("Hello {} !", str::from_utf8(name).unwrap()).as_bytes())
-        .unwrap()
-        .into_raw()
+#[derive(Serialize, Deserialize)]
+struct ConnectionInformation {
+    host: String,
+    port: u16,
+    username: String,
+    password: String,
+    database: String,
 }
 
-#[no_mangle]
-pub extern "C" fn connect_to_postgresql(raw_connection_string: *const u8,
-                                        len: usize)
-                                        -> *mut c_char {
-    let raw_connection_string = unsafe { slice::from_raw_parts(raw_connection_string, len) };
-    let connection_string = CString::new(str::from_utf8(raw_connection_string).unwrap())
-        .unwrap()
-        .into_raw();
-
-    let connection =
-        PgDatabaseConnection::connect(str::from_utf8(raw_connection_string).unwrap().to_owned());
-
-    println!("connection: {:?}", connection);
-    connection.unwrap();
-    // Ok(connection.unwrap())
-    connection_string
+#[post("/connect", data = "<connection_information>")]
+fn connect(connection_information: Json<ConnectionInformation>)
+           -> Result<Json<ConnectionInformation>, postgres::Error> {
+    let params = ConnectParams::builder()
+        .port(connection_information.port)
+        .user(&connection_information.username,
+              Some(&connection_information.password))
+        .database(&connection_information.database)
+        .build(Host::Tcp(connection_information.host.to_owned()));
+    PgDatabaseConnection::connect(params)
+        .map(|connection| connection_information)
+        .map_err()
+    // "postgres://postgres@localhost:5433"
+    // Json(connection.unwrap())
 }
-
 
 fn main() {
-    stdweb::initialize();
-    println!("Hello from Rust");
-
-    // connect_to_postgresql("postgres://postgres@localhost:5433".as_ptr(), 34);
-
-    stdweb::event_loop();
+    rocket::ignite().mount("/", routes![connect]).launch();
 }
