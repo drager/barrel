@@ -10,6 +10,13 @@ pub trait DatabaseConnection {
     // struct ConnectConfig {...} trait DatabaseConnection { fn connect(cfg: ConnectConfig)
     fn connect(config: Self::ConnectConfig) -> Result<Self::Connection, Self::ConnectionError>;
     fn init_db_pool(config: Self::ConnectConfig) -> Result<Self::Pool, Self::ConnectionError>;
+    fn get_databases(db_conn: Self::Connection) -> Result<Vec<Database>, Self::ConnectionError>;
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Database {
+    pub name: String,
+    pub oid: u32,
 }
 
 #[allow(dead_code)]

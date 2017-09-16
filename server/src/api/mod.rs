@@ -6,8 +6,10 @@ use postgres::params::ConnectParams;
 use postgres::params::Host;
 use postgres;
 use rocket::{response, Request};
-use api::db_pool::DatabasePooledConnection;
-use api::db_pool::DbConnection;
+use api::db_pool::{DbSessions, LockedSession, SessionId};
+use connection::{pg_connection, Database};
+use uuid::Uuid;
+use std::sync::{RwLock, PoisonError};
 
 pub mod db_pool;
 
@@ -23,6 +25,7 @@ pub struct ConnectionInformation {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ConnectionResponse {
     status: Status,
+    session_id: Uuid,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -30,16 +33,9 @@ enum Status {
     Ok,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Database {
-    name: String,
-    owner: String,
-    oid: u32,
-}
-
 #[post("/connect", data = "<connection_information>")]
 pub fn connect(connection_information: Json<ConnectionInformation>,
-               db_conn: DbConnection)
+               state_session: State<LockedSession>)
                -> Result<Json<ConnectionResponse>, ApiError> {
     let params = ConnectParams::builder()
         .port(connection_information.port)
@@ -48,38 +44,52 @@ pub fn connect(connection_information: Json<ConnectionInformation>,
         .database(&connection_information.database)
         .build(Host::Tcp(connection_information.host.to_owned()));
 
-    Ok(PgDatabaseConnection::init_db_pool(params)
-           .map(|connection| {
-                    use std::sync::RwLock;
-                    // let mut write_lock = db_conn.write().unwrap();
-                    // *write_lock = Some(RwLock::new(Some(connection)));
-                    Json(ConnectionResponse { status: Status::Ok })
-                })?)
+    PgDatabaseConnection::init_db_pool(params)
+        .map_err(ApiError::from)
+        .map(|connection| {
+            println!("state_session: {:?}", state_session);
+
+            match state_session.write() {
+                Ok(mut session) => {
+                    println!("session: {:?}", session);
+                    let session_id = Uuid::new_v4();
+                    session.add(session_id, connection);
+                    Ok(Json(ConnectionResponse {
+                                status: Status::Ok,
+                                session_id: session_id,
+                            }))
+                }
+                Err(_) => Err(ApiError::CouldNotWriteDbSession),
+            }
+        })?
 }
 
 #[get("/databases")]
-pub fn get_databases(db_conn: DbConnection) -> Result<Json<Vec<Database>>, ApiError> {
-    // db_conn
-    //     .inner()
-    //     .pool
-    //     .read()
-    //     .map(|connection| {
-    //         connection.unwrap().get().execute("", &[&"1"]);
-    //         Ok(vec![Database {
-    //                     name: "postgres".to_owned(),
-    //                     owner: "postgres".to_owned(),
-    //                     oid: 123,
-    //                 }])
-    //                 .map(Json)
-    //     })
-    // println!("DB CONN {:?}", db_conn);
+pub fn get_databases(session_id: SessionId,
+                     db_sessions: DbSessions)
+                     -> Result<Json<Vec<Database>>, ApiError> {
+    db_sessions
+        .get(&*session_id)
+        .map(|db_session| {
+            match db_session.get() {
+                Ok(db_conn) => {
+                    db_conn
+                        .query("SELECT datname, oid FROM pg_database WHERE NOT datistemplate ORDER BY datname ASC",
+                               &[])
+                        .map(|rows| {
+                            rows.iter().map(|row| {
+                                Database {
+                                    name: row.get("datname"),
+                                    oid: row.get("oid"),
+                                }
+                            }).collect()
+                        }).map(Json).map_err(ApiError::from)
+                },
+                Err(_) => Err(ApiError::NoDbSession)
+            }
 
-    Ok(vec![Database {
-                name: "postgres".to_owned(),
-                owner: "postgres".to_owned(),
-                oid: 123,
-            }])
-            .map(Json)
+        })
+        .unwrap()
 }
 
 pub fn json_error(reason: &str) -> Json {
@@ -89,14 +99,39 @@ pub fn json_error(reason: &str) -> Json {
     }))
 }
 
+type LockedSessionPoisionError = PoisonError<RwLock<DbSessions>>;
+
 #[derive(Debug)]
 pub enum ApiError {
-    PostgresError(postgres::Error),
+    PostgresError(pg_connection::PgError),
+    QueryError(postgres::Error),
+    LockedSessionError(LockedSessionPoisionError),
+    StringError(String),
+    NoDbSession,
+    CouldNotWriteDbSession,
+}
+
+impl From<pg_connection::PgError> for ApiError {
+    fn from(err: pg_connection::PgError) -> ApiError {
+        ApiError::PostgresError(err)
+    }
+}
+
+impl From<LockedSessionPoisionError> for ApiError {
+    fn from(err: LockedSessionPoisionError) -> ApiError {
+        ApiError::LockedSessionError(err)
+    }
+}
+
+impl From<String> for ApiError {
+    fn from(err: String) -> ApiError {
+        ApiError::StringError(err)
+    }
 }
 
 impl From<postgres::Error> for ApiError {
     fn from(err: postgres::Error) -> ApiError {
-        ApiError::PostgresError(err)
+        ApiError::QueryError(err)
     }
 }
 
