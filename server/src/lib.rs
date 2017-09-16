@@ -6,6 +6,7 @@ extern crate rocket;
 extern crate rocket_contrib;
 extern crate r2d2;
 extern crate r2d2_postgres;
+extern crate uuid;
 #[macro_use]
 extern crate serde_json;
 #[macro_use]
