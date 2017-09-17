@@ -8,7 +8,7 @@ pub trait DatabaseConnection {
     type Pool;
 
     // struct ConnectConfig {...} trait DatabaseConnection { fn connect(cfg: ConnectConfig)
-    fn connect(config: Self::ConnectConfig) -> Result<Self::Connection, Self::ConnectionError>;
+    // fn connect(config: Self::ConnectConfig) -> Result<Self::Connection, Self::ConnectionError>;
     fn init_db_pool(config: Self::ConnectConfig) -> Result<Self::Pool, Self::ConnectionError>;
     fn get_databases(db_conn: Self::Connection) -> Result<Vec<Database>, Self::ConnectionError>;
 }

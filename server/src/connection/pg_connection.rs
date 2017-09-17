@@ -2,7 +2,7 @@ use postgres::{self, Connection as PgConnection, TlsMode};
 use postgres::params::ConnectParams;
 use connection::DatabaseConnection;
 use r2d2_postgres::{PostgresConnectionManager, TlsMode as R2D2TlsMode};
-use r2d2;
+use r2d2::{self, PooledConnection};
 use connection::Database;
 
 
@@ -10,7 +10,7 @@ use connection::Database;
 pub struct PgDatabaseConnection {}
 
 impl DatabaseConnection for PgDatabaseConnection {
-    type Connection = PgConnection;
+    type Connection = PooledConnection<PostgresConnectionManager>;
     type ConnectionError = PgError;
     type ConnectConfig = ConnectParams;
     // An alias to the type for a pool of Postgresql connections.
@@ -21,10 +21,9 @@ impl DatabaseConnection for PgDatabaseConnection {
     /// # Example
     ///
     /// PgDatabaseConnection::connect("postgres://postgres@localhost:5433");
-    fn connect(config: Self::ConnectConfig) -> Result<Self::Connection, Self::ConnectionError> {
-        PgConnection::connect(config, TlsMode::None).map_err(PgError::from)
-    }
-
+    // fn connect(config: Self::ConnectConfig) -> Result<Self::Connection, Self::ConnectionError> {
+    //     PgConnection::connect(config, TlsMode::None).map_err(PgError::from)
+    // }
     /// Initializes a database pool.
     fn init_db_pool(database_url: Self::ConnectConfig)
                     -> Result<Self::Pool, Self::ConnectionError> {

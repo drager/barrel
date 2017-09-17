@@ -70,26 +70,15 @@ pub fn get_databases(session_id: SessionId,
                      -> Result<Json<Vec<Database>>, ApiError> {
     db_sessions
         .get(&*session_id)
-        .map(|db_session| {
-            match db_session.get() {
-                Ok(db_conn) => {
-                    db_conn
-                        .query("SELECT datname, oid FROM pg_database WHERE NOT datistemplate ORDER BY datname ASC",
-                               &[])
-                        .map(|rows| {
-                            rows.iter().map(|row| {
-                                Database {
-                                    name: row.get("datname"),
-                                    oid: row.get("oid"),
-                                }
-                            }).collect()
-                        }).map(Json).map_err(ApiError::from)
-                },
-                Err(_) => Err(ApiError::NoDbSession)
-            }
-
-        })
-        .unwrap()
+        .ok_or(ApiError::NoDbSession)
+        .and_then(|db_session| match db_session.get() {
+                      Ok(db_conn) => {
+                          PgDatabaseConnection::get_databases(db_conn)
+                              .map(Json)
+                              .map_err(ApiError::from)
+                      }
+                      Err(_) => Err(ApiError::NoDbSession),
+                  })
 }
 
 pub fn json_error(reason: &str) -> Json {
