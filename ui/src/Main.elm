@@ -308,7 +308,25 @@ header model =
 
 mainView : Model -> List (Html Msg) -> List (Html Msg)
 mainView model children =
-    [ div [ styles [ Css.displayFlex, Css.paddingTop (Css.px 32.0) ] ] children ]
+    [ div
+        [ styles
+            [ Css.color (Css.hex "#000000")
+            , Css.displayFlex
+            , Css.paddingTop (Css.px 32.0)
+            ]
+        ]
+        children
+    ]
+
+
+listDatabasesView : Model -> Html Msg
+listDatabasesView model =
+    div [] [ model |> toString |> text ]
+
+
+sessionListView : DbSessions -> Html Msg
+sessionListView dbSession =
+    div [] [ dbSession |> toString |> text ]
 
 
 view : Model -> Html Msg
@@ -323,7 +341,12 @@ view model =
                     , Css.flex (Css.int 1)
                     ]
                 ]
-                [ connectionFormView model ]
+                [ if Dict.isEmpty model.dbSessions then
+                    connectionFormView model
+                  else
+                    listDatabasesView model
+                  -- Dict.map (\session -> sessionListView session) model.dbSessions
+                ]
             , div []
                 [ model.dbSessions
                     |> toString
