@@ -2,20 +2,25 @@ module Main exposing (..)
 
 import Html exposing (Html, text, div, img)
 import Html.Attributes exposing (placeholder, value, class)
-import Html.Events exposing (onClick)
 import Form exposing (Form)
 import Form.Validate as Validate exposing (field, map5, Validation)
 import Form.Field
-import Form.Input as Input
 import Material
 import Material.Button as Button
 import Material.Textfield as Textfield
 import Material.Options as Options
 import Material.Card as Card
-import Material.Color as Color
 import Material.Layout as Layout
 import Styles exposing (..)
 import Css
+import Http
+import Dict exposing (Dict)
+import Json.Decode as Decode
+import Json.Encode as Encode
+
+
+type alias DbSessions =
+    Dict String SessionId
 
 
 type alias Mdl =
@@ -32,7 +37,60 @@ type alias Connection =
 
 
 type alias Model =
-    { form : Form () Connection, mdl : Material.Model }
+    { form : Form () Connection, mdl : Material.Model, dbSessions : DbSessions }
+
+
+type alias Database =
+    { name : String
+    , oid : Int
+    }
+
+
+type alias SessionId =
+    { id : String
+    }
+
+
+decodeDatabase : Decode.Decoder Database
+decodeDatabase =
+    Decode.map2 Database
+        (Decode.field "name" Decode.string)
+        (Decode.field "oid" Decode.int)
+
+
+decodeSessionId : Decode.Decoder SessionId
+decodeSessionId =
+    Decode.map SessionId
+        (Decode.field "session_id" Decode.string)
+
+
+connectionEncoder : Connection -> Encode.Value
+connectionEncoder connection =
+    let
+        attributes =
+            [ ( "host", Encode.string connection.host )
+            , ( "port", Encode.int connection.portNumber )
+            , ( "username", Encode.string connection.username )
+            , ( "password", Encode.string connection.password )
+            , ( "database", Encode.string connection.database )
+            ]
+    in
+        Encode.object attributes
+
+
+connect : Connection -> Http.Request SessionId
+connect connection =
+    Http.post (getApiUrl ++ "/connect") (connectionEncoder connection |> Http.jsonBody) decodeSessionId
+
+
+getApiUrl : String
+getApiUrl =
+    "http://localhost:8000"
+
+
+send : Connection -> Cmd Msg
+send connectionInfo =
+    Http.send ConnectToDatabase (connect connectionInfo)
 
 
 validation : Validation () Connection
@@ -47,7 +105,7 @@ validation =
 
 init : ( Model, Cmd Msg )
 init =
-    ( { form = Form.initial [] validation, mdl = Material.model }, Cmd.none )
+    ( { form = Form.initial [] validation, mdl = Material.model, dbSessions = Dict.empty }, Cmd.none )
 
 
 
@@ -57,16 +115,28 @@ init =
 type Msg
     = FormMsg Form.Msg
     | Mdl (Material.Msg Msg)
+    | ConnectToDatabase (Result Http.Error SessionId)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
-update msg ({ form } as model) =
+update msg model =
     case msg of
         FormMsg formMsg ->
-            ( { model | form = Form.update validation formMsg form }, Cmd.none )
+            case ( formMsg, Form.getOutput model.form ) of
+                ( Form.Submit, Just user ) ->
+                    ( model, send user )
+
+                _ ->
+                    ( { model | form = Form.update validation formMsg model.form }, Cmd.none )
 
         Mdl msg_ ->
             Material.update Mdl msg_ model
+
+        ConnectToDatabase (Ok sessionId) ->
+            ( { model | dbSessions = Dict.insert "as" sessionId model.dbSessions }, Cmd.none )
+
+        ConnectToDatabase (Err _) ->
+            ( model, Cmd.none )
 
 
 connectionFormView : Model -> Html Msg
@@ -198,13 +268,18 @@ connectionFormView model =
                 [ Button.render Mdl
                     [ 5 ]
                     model.mdl
-                    [ Button.raised, Button.primary, Button.ripple ]
+                    [ Button.raised, Button.primary, Button.ripple, onSubmit FormMsg ]
                     [ text "Connect" ]
                 ]
               -- , Html.button
               --     [ onClick Form.Submit ]
               --     [ text "Connect" ]
             ]
+
+
+onSubmit : (Form.Msg -> msg) -> Options.Property c msg
+onSubmit msg =
+    Options.onClick << msg <| Form.Submit
 
 
 onMaterialInput : (Form.Msg -> msg) -> String -> Options.Property c msg
@@ -240,7 +315,21 @@ view : Model -> Html Msg
 view model =
     let
         children =
-            [ div [ styles [ Css.displayFlex, Css.flexDirection Css.column, Css.alignItems Css.center, Css.flex (Css.int 1) ] ] [ connectionFormView model ] ]
+            [ div
+                [ styles
+                    [ Css.displayFlex
+                    , Css.flexDirection Css.column
+                    , Css.alignItems Css.center
+                    , Css.flex (Css.int 1)
+                    ]
+                ]
+                [ connectionFormView model ]
+            , div []
+                [ model.dbSessions
+                    |> toString
+                    |> text
+                ]
+            ]
     in
         div []
             [ Layout.render Mdl
