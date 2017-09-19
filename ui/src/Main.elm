@@ -319,12 +319,12 @@ mainView model children =
     ]
 
 
-listDatabasesView : Model -> Html Msg
+listDatabasesView : Model -> Html msg
 listDatabasesView model =
     div [] [ model |> toString |> text ]
 
 
-sessionListView : DbSessions -> Html Msg
+sessionListView : a -> Html msg
 sessionListView dbSession =
     div [] [ dbSession |> toString |> text ]
 
@@ -342,10 +342,11 @@ view model =
                     ]
                 ]
                 [ if Dict.isEmpty model.dbSessions then
-                    connectionFormView model
+                    div [] [ connectionFormView model ]
                   else
-                    listDatabasesView model
-                  -- Dict.map (\session -> sessionListView session) model.dbSessions
+                    Dict.values model.dbSessions
+                        |> List.map (\session -> sessionListView session)
+                        |> div []
                 ]
             , div []
                 [ model.dbSessions
