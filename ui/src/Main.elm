@@ -17,6 +17,7 @@ import Http
 import Dict exposing (Dict)
 import Json.Decode as Decode
 import Json.Encode as Encode
+import Ports exposing (..)
 
 
 type alias DbSessions =
@@ -62,6 +63,16 @@ decodeSessionId : Decode.Decoder SessionId
 decodeSessionId =
     Decode.map SessionId
         (Decode.field "session_id" Decode.string)
+
+
+encodeSessionId : SessionId -> Encode.Value
+encodeSessionId sessionId =
+    let
+        attributes =
+            [ ( "sessionId", Encode.string sessionId.id )
+            ]
+    in
+        Encode.object attributes
 
 
 connectionEncoder : Connection -> Encode.Value
@@ -118,6 +129,17 @@ type Msg
     | ConnectToDatabase (Result Http.Error SessionId)
 
 
+fb : Model -> Maybe SessionId
+fb model =
+    Dict.get "sessionId" model.dbSessions
+
+
+
+-- addToStorages : ( Ports.Key, Ports.Value ) -> Cmd msg
+-- addToStorages ( key, value ) =
+-- (setItemInLocalStorage ( key, value ) |> setItemInSessionStorage ( key, value ))
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
@@ -133,7 +155,12 @@ update msg model =
             Material.update Mdl msg_ model
 
         ConnectToDatabase (Ok sessionId) ->
-            ( { model | dbSessions = Dict.insert "as" sessionId model.dbSessions }, Cmd.none )
+            ( { model | dbSessions = Dict.insert "sessionId" sessionId model.dbSessions }
+            , Cmd.batch
+                [ setItemInLocalStorage ( "sessionId", (encodeSessionId sessionId) )
+                , setItemInSessionStorage ( "sessionId", (encodeSessionId sessionId) )
+                ]
+            )
 
         ConnectToDatabase (Err _) ->
             ( model, Cmd.none )
