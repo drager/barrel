@@ -1,16 +1,16 @@
 module Main exposing (..)
 
-import Html exposing (Html, text, div, img)
+import Html exposing (Html, text, div, img, h1)
 import Html.Attributes exposing (placeholder, value, class)
 import Form exposing (Form)
 import Form.Validate as Validate exposing (field, map5, Validation)
-import Form.Field
 import Material
 import Material.Button as Button
 import Material.Textfield as Textfield
 import Material.Options as Options
 import Material.Card as Card
 import Material.Layout as Layout
+import Material.List
 import Styles exposing (..)
 import Css
 import Http
@@ -18,11 +18,7 @@ import Dict exposing (Dict)
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Ports exposing (..)
-
-
-storageKey : String
-storageKey =
-    "dbSessions"
+import Utils exposing (..)
 
 
 type alias DbSessions =
@@ -58,6 +54,11 @@ type alias Database =
 
 type alias SessionId =
     String
+
+
+storageKey : String
+storageKey =
+    "dbSessions"
 
 
 decodeDatabase : Decode.Decoder Database
@@ -338,26 +339,6 @@ connectionFormView model =
             ]
 
 
-onSubmit : (Form.Msg -> msg) -> Options.Property c msg
-onSubmit msg =
-    Options.onClick << msg <| Form.Submit
-
-
-onMaterialInput : (Form.Msg -> msg) -> String -> Options.Property c msg
-onMaterialInput msg path =
-    Options.onInput <| msg << Form.Input path Form.Text << Form.Field.String
-
-
-onMaterialFocus : (Form.Msg -> msg) -> String -> Options.Property c msg
-onMaterialFocus msg path =
-    Options.onFocus << msg <| Form.Focus path
-
-
-onMaterialBlur : (Form.Msg -> msg) -> String -> Options.Property c msg
-onMaterialBlur msg path =
-    Options.onBlur << msg <| Form.Blur path
-
-
 header : Model -> List (Html Msg)
 header model =
     [ Layout.row
@@ -373,7 +354,6 @@ mainView model children =
         [ styles
             [ Css.color (Css.hex "#000000")
             , Css.displayFlex
-            , Css.paddingTop (Css.px 32.0)
             ]
         ]
         children
@@ -385,9 +365,24 @@ listDatabasesView model =
     div [] [ model |> toString |> text ]
 
 
-sessionListView : a -> Html msg
-sessionListView dbSession =
-    div [] [ dbSession |> toString |> text ]
+sessionListView : List Connection -> Html msg
+sessionListView dbSessions =
+    div []
+        [ Material.List.ul []
+            (List.map sessionListItemView dbSessions)
+        ]
+
+
+sessionListItemView : Connection -> Html msg
+sessionListItemView dbSession =
+    Material.List.li [ Material.List.withSubtitle ]
+        [ Material.List.content []
+            [ text dbSession.database
+            , Material.List.subtitle
+                []
+                [ text (dbSession.host ++ ":" ++ (dbSession.portNumber |> toString)) ]
+            ]
+        ]
 
 
 hasSession : DbSessions -> Bool
@@ -400,24 +395,20 @@ view model =
     let
         children =
             [ div
-                [ styles
-                    [ Css.displayFlex
-                    , Css.flexDirection Css.column
-                    , Css.alignItems Css.center
-                    , Css.flex (Css.int 1)
-                    ]
-                ]
-                [ if not (hasSession model.dbSessions) then
+                []
+                [ if hasSession model.dbSessions then
                     Dict.values model.dbSessions
-                        |> List.map (\session -> sessionListView session)
-                        |> div []
+                        |> sessionListView
                   else
-                    div [] [ connectionFormView model ]
-                ]
-            , div []
-                [ model.dbSessions
-                    |> toString
-                    |> text
+                    div
+                        [ styles
+                            [ Css.displayFlex
+                            , Css.flexDirection Css.column
+                            , Css.alignItems Css.center
+                            , Css.flex (Css.int 1)
+                            ]
+                        ]
+                        [ connectionFormView model ]
                 ]
             ]
     in
