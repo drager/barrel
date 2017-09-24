@@ -43,7 +43,11 @@ type alias ConnectionFormData a =
 
 
 type alias Model =
-    { form : Form () Connection, mdl : Material.Model, dbSessions : DbSessions }
+    { form : Form () Connection
+    , mdl : Material.Model
+    , dbSessions : DbSessions
+    , databases : List Database
+    }
 
 
 type alias Database =
@@ -54,6 +58,14 @@ type alias Database =
 
 type alias SessionId =
     String
+
+
+type Msg
+    = FormMsg Form.Msg
+    | Mdl (Material.Msg Msg)
+    | ConnectToDatabase Connection (Result Http.Error SessionId)
+    | GetDatabases (Result Http.Error (List Database))
+    | ReceiveFromLocalStorage ( String, Decode.Value )
 
 
 storageKey : String
@@ -118,6 +130,12 @@ send connectionInfo =
     Http.send (ConnectToDatabase connectionInfo) (connect connectionInfo)
 
 
+getDatabases : Cmd Msg
+getDatabases =
+    Http.send (GetDatabases)
+        (Http.get (getApiUrl ++ "/databases") (Decode.list decodeDatabase))
+
+
 validation : Validation () Connection
 validation =
     map5 Connection
@@ -130,16 +148,13 @@ validation =
 
 init : ( Model, Cmd Msg )
 init =
-    ( { form = Form.initial [] validation, mdl = Material.model, dbSessions = Dict.empty }
+    ( { form = Form.initial [] validation
+      , mdl = Material.model
+      , dbSessions = Dict.empty
+      , databases = []
+      }
     , Ports.getItemInLocalStorage storageKey
     )
-
-
-type Msg
-    = FormMsg Form.Msg
-    | Mdl (Material.Msg Msg)
-    | ConnectToDatabase Connection (Result Http.Error SessionId)
-    | ReceiveFromLocalStorage ( String, Decode.Value )
 
 
 connectionDecoder : Decode.Decoder Connection
@@ -199,6 +214,12 @@ update msg model =
                 Err err ->
                     Debug.log err
                         ( model, Cmd.none )
+
+        GetDatabases (Ok databases) ->
+            ( { model | databases = databases }, Cmd.none )
+
+        GetDatabases (Err _) ->
+            ( model, Cmd.none )
 
 
 connectionFormView : Model -> Html Msg
@@ -362,7 +383,11 @@ mainView model children =
 
 listDatabasesView : Model -> Html msg
 listDatabasesView model =
-    div [] [ model |> toString |> text ]
+    div [] []
+
+
+
+-- div [] [ Html.map getDatabases ]
 
 
 sessionListView : List Connection -> Html msg
