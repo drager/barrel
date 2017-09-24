@@ -84,12 +84,6 @@ encodeSessionId sessionId =
         Encode.string sessionId
 
 
-
--- decodeDbSessions : Decode.Decoder DbSessions
--- decodeDbSessions =
---     Decode.dict
-
-
 connectionEncoder : Connection -> Encode.Value
 connectionEncoder connection =
     let
@@ -147,20 +141,6 @@ type Msg
     | ReceiveFromLocalStorage ( String, Decode.Value )
 
 
-
--- fb : Model -> Maybe SessionId
--- fb model =
---     Dict.get "sessionId" model.dbSessions
--- addToStorages : ( Ports.Key, Ports.Value ) -> Cmd msg
--- addToStorages ( key, value ) =
--- (setItemInLocalStorage ( key, value ) |> setItemInSessionStorage ( key, value ))
--- decodeDatabase : Decode.Decoder Database
--- decodeDatabase =
---     Decode.map2 Database
---         (Decode.field "name" Decode.string)
---         (Decode.field "oid" Decode.int)
-
-
 connectionDecoder : Decode.Decoder Connection
 connectionDecoder =
     Decode.map5 Connection
@@ -180,45 +160,9 @@ storageEncoder : SessionId -> Connection -> Encode.Value
 storageEncoder sessionId connection =
     let
         attributes =
-            [ ( sessionId, (connectionEncoder connection) )
-              -- [ ( "id", (Encode.object [ ( "id", Encode.string <| sessionId ) ]) )
-              -- , connectionEncoder connection
-            ]
+            [ ( sessionId, (connectionEncoder connection) ) ]
     in
         Encode.object attributes
-
-
-
--- insertEachSession : List DbSessions -> Model -> List DbSessions
-
-
-getValue : DbSessions -> Maybe Connection
-getValue dict =
-    List.head (Dict.values dict)
-
-
-getKey : DbSessions -> Maybe SessionId
-getKey dict =
-    List.head (Dict.keys dict)
-
-
-insertEachSession : List DbSessions -> Model -> List (Maybe DbSessions)
-insertEachSession sessions model =
-    List.map
-        (\session ->
-            Maybe.map2
-                (\value ->
-                    \key ->
-                        Dict.insert key value model.dbSessions
-                )
-                (getValue
-                    session
-                )
-                (getKey
-                    session
-                )
-        )
-        sessions
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -488,10 +432,6 @@ view model =
 subscriptions : Model -> Sub Msg
 subscriptions model =
     localStorageGetItemResponse ReceiveFromLocalStorage
-
-
-
--- Sub.none
 
 
 main : Program Never Model Msg
