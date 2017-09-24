@@ -20,8 +20,13 @@ import Json.Encode as Encode
 import Ports exposing (..)
 
 
+storageKey : String
+storageKey =
+    "dbSessions"
+
+
 type alias DbSessions =
-    Dict String SessionId
+    Dict SessionId Connection
 
 
 type alias Mdl =
@@ -37,6 +42,10 @@ type alias Connection =
     }
 
 
+type alias ConnectionFormData a =
+    { a | password : String }
+
+
 type alias Model =
     { form : Form () Connection, mdl : Material.Model, dbSessions : DbSessions }
 
@@ -48,8 +57,7 @@ type alias Database =
 
 
 type alias SessionId =
-    { id : String
-    }
+    String
 
 
 decodeDatabase : Decode.Decoder Database
@@ -61,18 +69,25 @@ decodeDatabase =
 
 decodeSessionId : Decode.Decoder SessionId
 decodeSessionId =
-    Decode.map SessionId
-        (Decode.field "session_id" Decode.string)
+    Decode.field
+        "session_id"
+        Decode.string
 
 
 encodeSessionId : SessionId -> Encode.Value
 encodeSessionId sessionId =
     let
         attributes =
-            [ ( "sessionId", Encode.string sessionId.id )
+            [ ( "sessionId", Encode.string sessionId )
             ]
     in
-        Encode.object attributes
+        Encode.string sessionId
+
+
+
+-- decodeDbSessions : Decode.Decoder DbSessions
+-- decodeDbSessions =
+--     Decode.dict
 
 
 connectionEncoder : Connection -> Encode.Value
@@ -91,7 +106,11 @@ connectionEncoder connection =
 
 connect : Connection -> Http.Request SessionId
 connect connection =
-    Http.post (getApiUrl ++ "/connect") (connectionEncoder connection |> Http.jsonBody) decodeSessionId
+    Http.post (getApiUrl ++ "/connect")
+        (connectionEncoder connection
+            |> Http.jsonBody
+        )
+        decodeSessionId
 
 
 getApiUrl : String
@@ -101,7 +120,7 @@ getApiUrl =
 
 send : Connection -> Cmd Msg
 send connectionInfo =
-    Http.send ConnectToDatabase (connect connectionInfo)
+    Http.send (ConnectToDatabase connectionInfo) (connect connectionInfo)
 
 
 validation : Validation () Connection
@@ -116,28 +135,90 @@ validation =
 
 init : ( Model, Cmd Msg )
 init =
-    ( { form = Form.initial [] validation, mdl = Material.model, dbSessions = Dict.empty }, Cmd.none )
-
-
-
----- UPDATE ----
+    ( { form = Form.initial [] validation, mdl = Material.model, dbSessions = Dict.empty }
+    , Ports.getItemInLocalStorage storageKey
+    )
 
 
 type Msg
     = FormMsg Form.Msg
     | Mdl (Material.Msg Msg)
-    | ConnectToDatabase (Result Http.Error SessionId)
-
-
-fb : Model -> Maybe SessionId
-fb model =
-    Dict.get "sessionId" model.dbSessions
+    | ConnectToDatabase Connection (Result Http.Error SessionId)
+    | ReceiveFromLocalStorage ( String, Decode.Value )
 
 
 
+-- fb : Model -> Maybe SessionId
+-- fb model =
+--     Dict.get "sessionId" model.dbSessions
 -- addToStorages : ( Ports.Key, Ports.Value ) -> Cmd msg
 -- addToStorages ( key, value ) =
 -- (setItemInLocalStorage ( key, value ) |> setItemInSessionStorage ( key, value ))
+-- decodeDatabase : Decode.Decoder Database
+-- decodeDatabase =
+--     Decode.map2 Database
+--         (Decode.field "name" Decode.string)
+--         (Decode.field "oid" Decode.int)
+
+
+connectionDecoder : Decode.Decoder Connection
+connectionDecoder =
+    Decode.map5 Connection
+        (Decode.field "host" Decode.string)
+        (Decode.field "port" Decode.int)
+        (Decode.field "username" Decode.string)
+        (Decode.field "password" Decode.string)
+        (Decode.field "database" Decode.string)
+
+
+storageDecoder : Decode.Decoder DbSessions
+storageDecoder =
+    Decode.dict connectionDecoder
+
+
+storageEncoder : SessionId -> Connection -> Encode.Value
+storageEncoder sessionId connection =
+    let
+        attributes =
+            [ ( sessionId, (connectionEncoder connection) )
+              -- [ ( "id", (Encode.object [ ( "id", Encode.string <| sessionId ) ]) )
+              -- , connectionEncoder connection
+            ]
+    in
+        Encode.object attributes
+
+
+
+-- insertEachSession : List DbSessions -> Model -> List DbSessions
+
+
+getValue : DbSessions -> Maybe Connection
+getValue dict =
+    List.head (Dict.values dict)
+
+
+getKey : DbSessions -> Maybe SessionId
+getKey dict =
+    List.head (Dict.keys dict)
+
+
+insertEachSession : List DbSessions -> Model -> List (Maybe DbSessions)
+insertEachSession sessions model =
+    List.map
+        (\session ->
+            Maybe.map2
+                (\value ->
+                    \key ->
+                        Dict.insert key value model.dbSessions
+                )
+                (getValue
+                    session
+                )
+                (getKey
+                    session
+                )
+        )
+        sessions
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -154,16 +235,25 @@ update msg model =
         Mdl msg_ ->
             Material.update Mdl msg_ model
 
-        ConnectToDatabase (Ok sessionId) ->
-            ( { model | dbSessions = Dict.insert "sessionId" sessionId model.dbSessions }
+        ConnectToDatabase connectionInfo (Ok sessionId) ->
+            ( { model | dbSessions = Dict.insert sessionId connectionInfo model.dbSessions }
             , Cmd.batch
-                [ setItemInLocalStorage ( "sessionId", (encodeSessionId sessionId) )
-                , setItemInSessionStorage ( "sessionId", (encodeSessionId sessionId) )
+                [ pushItemInLocalStorage ( storageKey, (storageEncoder sessionId connectionInfo) )
+                , pushItemInSessionStorage ( storageKey, (storageEncoder sessionId connectionInfo) )
                 ]
             )
 
-        ConnectToDatabase (Err _) ->
+        ConnectToDatabase connectionInfo (Err _) ->
             ( model, Cmd.none )
+
+        ReceiveFromLocalStorage ( storageKey, item ) ->
+            case Decode.decodeValue storageDecoder item of
+                Ok sessions ->
+                    ( { model | dbSessions = sessions }, Cmd.none )
+
+                Err err ->
+                    Debug.log err
+                        ( model, Cmd.none )
 
 
 connectionFormView : Model -> Html Msg
@@ -356,6 +446,11 @@ sessionListView dbSession =
     div [] [ dbSession |> toString |> text ]
 
 
+hasSession : DbSessions -> Bool
+hasSession dbSessions =
+    Dict.size dbSessions > 0
+
+
 view : Model -> Html Msg
 view model =
     let
@@ -368,12 +463,12 @@ view model =
                     , Css.flex (Css.int 1)
                     ]
                 ]
-                [ if Dict.isEmpty model.dbSessions then
-                    div [] [ connectionFormView model ]
-                  else
+                [ if not (hasSession model.dbSessions) then
                     Dict.values model.dbSessions
                         |> List.map (\session -> sessionListView session)
                         |> div []
+                  else
+                    div [] [ connectionFormView model ]
                 ]
             , div []
                 [ model.dbSessions
@@ -390,11 +485,20 @@ view model =
             ]
 
 
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    localStorageGetItemResponse ReceiveFromLocalStorage
+
+
+
+-- Sub.none
+
+
 main : Program Never Model Msg
 main =
     Html.program
         { view = view
         , init = init
         , update = update
-        , subscriptions = always Sub.none
+        , subscriptions = subscriptions
         }
