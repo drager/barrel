@@ -21,6 +21,15 @@ import Ports exposing (..)
 import Utils exposing (..)
 
 
+-- type alias Connection = { host : String, username : String }
+-- type alias ConnectionForm = { connection : Connection, password : String }
+-- -- OR
+-- type alias ConnectionForm = { host : String, username : String, password : String }
+-- type alias ConnectionForm = { host : String, username : String, password : String }
+-- type alias HasConnection a = { a | host : String, username : String }
+-- functionThatTakesConnection : HasConnection a -> Something
+
+
 type alias DbSessions =
     Dict SessionId Connection
 
@@ -33,17 +42,22 @@ type alias Connection =
     { host : String
     , portNumber : Int
     , username : String
+    , database : String
+    , connected : Bool
+    }
+
+
+type alias ConnectionForm =
+    { host : String
+    , portNumber : Int
+    , username : String
     , password : String
     , database : String
     }
 
 
-type alias ConnectionFormData a =
-    { a | password : String }
-
-
 type alias Model =
-    { form : Form () Connection
+    { form : Form () ConnectionForm
     , mdl : Material.Model
     , dbSessions : DbSessions
     , databases : List Database
@@ -66,6 +80,7 @@ type Msg
     | ConnectToDatabase Connection (Result Http.Error SessionId)
     | GetDatabases (Result Http.Error (List Database))
     | ReceiveFromLocalStorage ( String, Decode.Value )
+    | ReceiveFromSessionStorage ( String, Decode.Value )
 
 
 storageKey : String
@@ -97,8 +112,8 @@ encodeSessionId sessionId =
         Encode.string sessionId
 
 
-connectionEncoder : Connection -> Encode.Value
-connectionEncoder connection =
+connectionFormEncoder : ConnectionForm -> Encode.Value
+connectionFormEncoder connection =
     let
         attributes =
             [ ( "host", Encode.string connection.host )
@@ -111,10 +126,23 @@ connectionEncoder connection =
         Encode.object attributes
 
 
-connect : Connection -> Http.Request SessionId
+connectionEncoder : Connection -> Encode.Value
+connectionEncoder connection =
+    let
+        attributes =
+            [ ( "host", Encode.string connection.host )
+            , ( "port", Encode.int connection.portNumber )
+            , ( "username", Encode.string connection.username )
+            , ( "database", Encode.string connection.database )
+            ]
+    in
+        Encode.object attributes
+
+
+connect : ConnectionForm -> Http.Request SessionId
 connect connection =
     Http.post (getApiUrl ++ "/connect")
-        (connectionEncoder connection
+        (connectionFormEncoder connection
             |> Http.jsonBody
         )
         decodeSessionId
@@ -125,9 +153,18 @@ getApiUrl =
     "http://localhost:8000"
 
 
-send : Connection -> Cmd Msg
+send : ConnectionForm -> Cmd Msg
 send connectionInfo =
-    Http.send (ConnectToDatabase connectionInfo) (connect connectionInfo)
+    Http.send
+        (ConnectToDatabase
+            { host = connectionInfo.host
+            , portNumber = connectionInfo.portNumber
+            , username = connectionInfo.username
+            , database = connectionInfo.database
+            , connected = False
+            }
+        )
+        (connect connectionInfo)
 
 
 getDatabases : Cmd Msg
@@ -136,9 +173,9 @@ getDatabases =
         (Http.get (getApiUrl ++ "/databases") (Decode.list decodeDatabase))
 
 
-validation : Validation () Connection
+validation : Validation () ConnectionForm
 validation =
-    map5 Connection
+    map5 ConnectionForm
         (field "host" Validate.string)
         (field "portNumber" Validate.int)
         (field "username" Validate.string)
@@ -163,8 +200,8 @@ connectionDecoder =
         (Decode.field "host" Decode.string)
         (Decode.field "port" Decode.int)
         (Decode.field "username" Decode.string)
-        (Decode.field "password" Decode.string)
         (Decode.field "database" Decode.string)
+        (Decode.field "connected" Decode.bool)
 
 
 storageDecoder : Decode.Decoder DbSessions
@@ -196,17 +233,30 @@ update msg model =
             Material.update Mdl msg_ model
 
         ConnectToDatabase connectionInfo (Ok sessionId) ->
-            ( { model | dbSessions = Dict.insert sessionId connectionInfo model.dbSessions }
-            , Cmd.batch
-                [ pushItemInLocalStorage ( storageKey, (storageEncoder sessionId connectionInfo) )
-                , pushItemInSessionStorage ( storageKey, (storageEncoder sessionId connectionInfo) )
-                ]
-            )
+            let
+                a =
+                    Debug.log "CONNECTION" (storageEncoder sessionId { connectionInfo | connected = True } |> toString)
+            in
+                ( { model | dbSessions = Dict.insert sessionId { connectionInfo | connected = True } model.dbSessions }
+                , Cmd.batch
+                    [ pushItemInLocalStorage ( storageKey, (storageEncoder sessionId connectionInfo) )
+                    , pushItemInSessionStorage ( storageKey, (storageEncoder sessionId { connectionInfo | connected = True }) )
+                    ]
+                )
 
         ConnectToDatabase connectionInfo (Err _) ->
             ( model, Cmd.none )
 
         ReceiveFromLocalStorage ( storageKey, item ) ->
+            case Decode.decodeValue storageDecoder item of
+                Ok sessions ->
+                    ( { model | dbSessions = sessions }, Cmd.none )
+
+                Err err ->
+                    Debug.log err
+                        ( model, Cmd.none )
+
+        ReceiveFromSessionStorage ( storageKey, item ) ->
             case Decode.decodeValue storageDecoder item of
                 Ok sessions ->
                     ( { model | dbSessions = sessions }, Cmd.none )
@@ -447,7 +497,10 @@ view model =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    localStorageGetItemResponse ReceiveFromLocalStorage
+    Sub.batch
+        [ Ports.localStorageGetItemResponse ReceiveFromLocalStorage
+        , Ports.sessionStorageGetItemResponse ReceiveFromSessionStorage
+        ]
 
 
 main : Program Never Model Msg

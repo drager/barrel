@@ -14,6 +14,9 @@ type alias Value =
 port localStorageGetItemResponse : (( Key, Value ) -> msg) -> Sub msg
 
 
+port sessionStorageGetItemResponse : (( Key, Value ) -> msg) -> Sub msg
+
+
 port setItemInLocalStorage : ( Key, Value ) -> Cmd msg
 
 
