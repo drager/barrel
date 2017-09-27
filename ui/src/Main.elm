@@ -134,6 +134,7 @@ connectionEncoder connection =
             , ( "port", Encode.int connection.portNumber )
             , ( "username", Encode.string connection.username )
             , ( "database", Encode.string connection.database )
+            , ( "connected", Encode.bool connection.connected )
             ]
     in
         Encode.object attributes
