@@ -28,10 +28,22 @@ import Utils exposing (..)
 -- type alias ConnectionForm = { host : String, username : String, password : String }
 -- type alias HasConnection a = { a | host : String, username : String }
 -- functionThatTakesConnection : HasConnection a -> Something
+{--TODO: Implement reconnection:
+Go to a server route with the inactiveDbSessions, that are stored in localStorage and ask the server for some data with that session id.
+If it succeeds, then we have a connection that works.
+--}
 
 
 type alias DbSessions =
     Dict SessionId Connection
+
+
+type alias InactiveDbSessions =
+    DbSessions
+
+
+type alias ActiveDbSessions =
+    DbSessions
 
 
 type alias Mdl =
@@ -43,7 +55,6 @@ type alias Connection =
     , portNumber : Int
     , username : String
     , database : String
-    , connected : Bool
     }
 
 
@@ -59,7 +70,8 @@ type alias ConnectionForm =
 type alias Model =
     { form : Form () ConnectionForm
     , mdl : Material.Model
-    , dbSessions : DbSessions
+    , activeDbSessions : ActiveDbSessions
+    , inActiveDbSessions : InactiveDbSessions
     , databases : List Database
     }
 
@@ -78,6 +90,7 @@ type Msg
     = FormMsg Form.Msg
     | Mdl (Material.Msg Msg)
     | ConnectToDatabase Connection (Result Http.Error SessionId)
+    | RetryConnection SessionId (Result Http.Error SessionId)
     | GetDatabases (Result Http.Error (List Database))
     | ReceiveFromLocalStorage ( String, Decode.Value )
     | ReceiveFromSessionStorage ( String, Decode.Value )
@@ -134,7 +147,6 @@ connectionEncoder connection =
             , ( "port", Encode.int connection.portNumber )
             , ( "username", Encode.string connection.username )
             , ( "database", Encode.string connection.database )
-            , ( "connected", Encode.bool connection.connected )
             ]
     in
         Encode.object attributes
@@ -162,10 +174,22 @@ send connectionInfo =
             , portNumber = connectionInfo.portNumber
             , username = connectionInfo.username
             , database = connectionInfo.database
-            , connected = False
             }
         )
         (connect connectionInfo)
+
+
+retryConnection : SessionId -> Cmd Msg
+retryConnection sessionid =
+    Http.send
+        (RetryConnection sessionid)
+        (Http.post
+            (getApiUrl ++ "/retry")
+            (Encode.string sessionid
+                |> Http.jsonBody
+            )
+            decodeSessionId
+        )
 
 
 getDatabases : Cmd Msg
@@ -188,21 +212,24 @@ init : ( Model, Cmd Msg )
 init =
     ( { form = Form.initial [] validation
       , mdl = Material.model
-      , dbSessions = Dict.empty
+      , activeDbSessions = Dict.empty
+      , inActiveDbSessions = Dict.empty
       , databases = []
       }
-    , Ports.getItemInLocalStorage storageKey
+    , Cmd.batch
+        [ Ports.getItemInLocalStorage storageKey
+        , Ports.getItemInSessionStorage storageKey
+        ]
     )
 
 
 connectionDecoder : Decode.Decoder Connection
 connectionDecoder =
-    Decode.map5 Connection
+    Decode.map4 Connection
         (Decode.field "host" Decode.string)
         (Decode.field "port" Decode.int)
         (Decode.field "username" Decode.string)
         (Decode.field "database" Decode.string)
-        (Decode.field "connected" Decode.bool)
 
 
 storageDecoder : Decode.Decoder DbSessions
@@ -234,16 +261,12 @@ update msg model =
             Material.update Mdl msg_ model
 
         ConnectToDatabase connectionInfo (Ok sessionId) ->
-            let
-                a =
-                    Debug.log "CONNECTION" (storageEncoder sessionId { connectionInfo | connected = True } |> toString)
-            in
-                ( { model | dbSessions = Dict.insert sessionId { connectionInfo | connected = True } model.dbSessions }
-                , Cmd.batch
-                    [ pushItemInLocalStorage ( storageKey, (storageEncoder sessionId connectionInfo) )
-                    , pushItemInSessionStorage ( storageKey, (storageEncoder sessionId { connectionInfo | connected = True }) )
-                    ]
-                )
+            ( { model | activeDbSessions = Dict.insert sessionId connectionInfo model.activeDbSessions }
+            , Cmd.batch
+                [ pushItemInLocalStorage ( storageKey, (storageEncoder sessionId connectionInfo) )
+                , pushItemInSessionStorage ( storageKey, (storageEncoder sessionId connectionInfo) )
+                ]
+            )
 
         ConnectToDatabase connectionInfo (Err _) ->
             ( model, Cmd.none )
@@ -251,7 +274,7 @@ update msg model =
         ReceiveFromLocalStorage ( storageKey, item ) ->
             case Decode.decodeValue storageDecoder item of
                 Ok sessions ->
-                    ( { model | dbSessions = sessions }, Cmd.none )
+                    ( { model | inActiveDbSessions = sessions }, Cmd.none )
 
                 Err err ->
                     Debug.log err
@@ -260,7 +283,7 @@ update msg model =
         ReceiveFromSessionStorage ( storageKey, item ) ->
             case Decode.decodeValue storageDecoder item of
                 Ok sessions ->
-                    ( { model | dbSessions = sessions }, Cmd.none )
+                    ( { model | activeDbSessions = sessions }, Cmd.none )
 
                 Err err ->
                     Debug.log err
@@ -441,40 +464,67 @@ listDatabasesView model =
 -- div [] [ Html.map getDatabases ]
 
 
-sessionListView : List Connection -> Html msg
-sessionListView dbSessions =
-    div []
+isSessionActive : SessionId -> ActiveDbSessions -> Bool
+isSessionActive sessionId activeDbSessions =
+    let
+        activeKeys =
+            Dict.keys activeDbSessions
+    in
+        Dict.member sessionId activeDbSessions
+
+
+sessionListView : Model -> DbSessions -> Html Msg
+sessionListView model dbSessions =
+    div [ styles [ Css.flex (Css.int 1) ] ]
         [ Material.List.ul []
-            (List.map sessionListItemView dbSessions)
+            (Dict.toList
+                dbSessions
+                |> List.map
+                    (\( key, value ) ->
+                        sessionListItemView model
+                            { sessionId = key
+                            , connection = value
+                            }
+                            (isSessionActive key model.activeDbSessions)
+                    )
+            )
         ]
 
 
-sessionListItemView : Connection -> Html msg
-sessionListItemView dbSession =
+sessionListItemView : Model -> { sessionId : SessionId, connection : Connection } -> Bool -> Html Msg
+sessionListItemView model { sessionId, connection } active =
     Material.List.li [ Material.List.withSubtitle ]
         [ Material.List.content []
-            [ text dbSession.database
+            [ text connection.database
             , Material.List.subtitle
                 []
-                [ text (dbSession.host ++ ":" ++ (dbSession.portNumber |> toString)) ]
+                [ text (connection.host ++ ":" ++ (connection.portNumber |> toString)) ]
             ]
+        , if not active then
+            Material.List.content2 []
+                [ Button.render Mdl
+                    [ 0 ]
+                    model.mdl
+                    [ Button.raised, Button.primary, Button.ripple ]
+                    -- , (Options.onClick (retryConnection sessionId))
+                    [ text "Connect" ]
+                ]
+          else
+            div [] []
         ]
-
-
-hasSession : DbSessions -> Bool
-hasSession dbSessions =
-    Dict.size dbSessions > 0
 
 
 view : Model -> Html Msg
 view model =
     let
         children =
-            [ div
-                []
-                [ if hasSession model.dbSessions then
-                    Dict.values model.dbSessions
-                        |> sessionListView
+            [ div [ styles [ Css.flex (Css.int 1) ] ]
+                [ if not (Dict.isEmpty model.activeDbSessions) then
+                    model.activeDbSessions
+                        |> sessionListView model
+                  else if not (Dict.isEmpty model.inActiveDbSessions) then
+                    model.inActiveDbSessions
+                        |> sessionListView model
                   else
                     div
                         [ styles
