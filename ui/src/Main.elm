@@ -1,8 +1,8 @@
 module Main exposing (..)
 
 import Html exposing (Html, text, div, img, h1)
-import Html.Attributes exposing (placeholder, value, class)
 import Form exposing (Form)
+import Form.Error
 import Form.Validate as Validate exposing (field, map5, Validation)
 import Material
 import Material.Dialog
@@ -10,6 +10,7 @@ import Material.Button as Button
 import Material.Textfield
 import Material.Card as Card
 import Material.Layout as Layout
+import Material.Options
 import Material.List
 import Styles exposing (..)
 import Css
@@ -220,10 +221,7 @@ init =
       , inActiveDbSessions = Dict.empty
       , databases = []
       }
-    , Cmd.batch
-        [ Ports.getItemInLocalStorage storageKey
-        , Ports.getItemInSessionStorage storageKey
-        ]
+    , Ports.getItemInSessionStorage storageKey
     )
 
 
@@ -257,7 +255,11 @@ update msg model =
         FormMsg formMsg ->
             case ( formMsg, Form.getOutput model.form ) of
                 ( Form.Submit, Just user ) ->
-                    ( model, send user )
+                    let
+                        b =
+                            Debug.log "FORM" user
+                    in
+                        ( model, send user )
 
                 _ ->
                     ( { model | form = Form.update validation formMsg model.form }, Cmd.none )
@@ -348,7 +350,7 @@ update msg model =
 
                 Err err ->
                     Debug.log err
-                        ( model, Cmd.none )
+                        ( model, Ports.getItemInLocalStorage storageKey )
 
         GetDatabases (Ok databases) ->
             ( { model | databases = databases }, Cmd.none )
@@ -357,16 +359,20 @@ update msg model =
             ( model, Cmd.none )
 
 
-connectionFormRow :
+formField :
     Maybe String
     -> Model
     -> { b | value : Maybe String, path : String }
     -> String
     -> Material.Textfield.Property Msg
+    -> String
     -> Html Msg
-connectionFormRow maybeValue model fieldObject label fieldType =
-    case maybeValue of
-        Maybe.Just value ->
+formField maybeValue model fieldObject label fieldType error =
+    let
+        _ =
+            Debug.log "error" error
+
+        render value =
             Material.Textfield.render
                 Mdl
                 [ 0 ]
@@ -378,23 +384,17 @@ connectionFormRow maybeValue model fieldObject label fieldType =
                 , onMaterialInput FormMsg fieldObject.path
                 , onMaterialFocus FormMsg fieldObject.path
                 , onMaterialBlur FormMsg fieldObject.path
+                , Material.Textfield.error (error)
+                    |> Material.Options.when (not <| String.isEmpty error)
                 ]
                 []
+    in
+        case maybeValue of
+            Maybe.Just value ->
+                render value
 
-        Maybe.Nothing ->
-            Material.Textfield.render
-                Mdl
-                [ 0 ]
-                model.mdl
-                [ Material.Textfield.label label
-                , Material.Textfield.floatingLabel
-                , fieldType
-                , Material.Textfield.value <| Maybe.withDefault "" fieldObject.value
-                , onMaterialInput FormMsg fieldObject.path
-                , onMaterialFocus FormMsg fieldObject.path
-                , onMaterialBlur FormMsg fieldObject.path
-                ]
-                []
+            Maybe.Nothing ->
+                render ""
 
 
 connectionFormView : Model -> Maybe Connection -> Html Msg
@@ -404,11 +404,21 @@ connectionFormView model connectionInfo =
         errorFor field =
             case field.liveError of
                 Just error ->
-                    -- replace toString with your own translations
-                    div [ class "error" ] [ text (toString error) ]
+                    case error of
+                        Form.Error.Empty ->
+                            "The field is required"
+
+                        Form.Error.InvalidInt ->
+                            "Must be a number"
+
+                        Form.Error.InvalidString ->
+                            "The field is required"
+
+                        _ ->
+                            ""
 
                 Nothing ->
-                    text ""
+                    ""
 
         form =
             model.form
@@ -432,40 +442,32 @@ connectionFormView model connectionInfo =
 
         database =
             Form.getFieldAsString "database" form
+
+        buttonAttributes =
+            [ Button.raised
+            , Button.primary
+            , Button.ripple
+            , onSubmit FormMsg
+            ]
     in
         Card.view []
             [ cardBlock
-                [ connectionFormRow (Maybe.map .host connectionInfo) model host "Host" Material.Textfield.text_
-                , connectionFormRow (Maybe.map (.portNumber >> toString) connectionInfo) model portNumber "Port" Material.Textfield.text_
-                , connectionFormRow (Maybe.map .username connectionInfo) model username "Username" Material.Textfield.text_
-                , connectionFormRow Nothing model password "Password" Material.Textfield.password
-                , connectionFormRow (Maybe.map .database connectionInfo) model database "Database" Material.Textfield.text_
-                  -- , Html.label
-                  --     []
-                  --     [ text "Port" ]
-                  -- , Input.textInput portNumber []
-                  -- , errorFor portNumber
-                  -- , Html.label
-                  --     []
-                  --     [ text "Username" ]
-                  -- , Input.textInput username []
-                  -- , errorFor username
-                  -- , Html.label
-                  --     []
-                  --     [ text "Password" ]
-                  -- , Input.textInput password []
-                  -- , errorFor password
-                  -- , Html.label
-                  --     []
-                  --     [ text "Database" ]
-                  -- , Input.textInput database []
-                  -- , errorFor database
+                [ formField (Maybe.map .host connectionInfo) model host "Host" Material.Textfield.text_ (errorFor host)
+                , formField (Maybe.map (.portNumber >> toString) connectionInfo) model portNumber "Port" Material.Textfield.text_ (errorFor portNumber)
+                , formField (Maybe.map .username connectionInfo) model username "Username" Material.Textfield.text_ (errorFor username)
+                , formField Nothing model password "Password" Material.Textfield.password (errorFor password)
+                , formField (Maybe.map .database connectionInfo) model database "Database" Material.Textfield.text_ (errorFor database)
+                , errorFor username |> text
                 ]
             , Card.actions []
                 [ Button.render Mdl
                     [ 5 ]
                     model.mdl
-                    [ Button.raised, Button.primary, Button.ripple, onSubmit FormMsg ]
+                    (if List.isEmpty (Form.getErrors form) |> not then
+                        List.append [ Button.disabled ] buttonAttributes
+                     else
+                        buttonAttributes
+                    )
                     [ text "Connect" ]
                 ]
             ]
