@@ -5,9 +5,9 @@ import Html.Attributes exposing (placeholder, value, class)
 import Form exposing (Form)
 import Form.Validate as Validate exposing (field, map5, Validation)
 import Material
+import Material.Dialog
 import Material.Button as Button
-import Material.Textfield as Textfield
-import Material.Options as Options
+import Material.Textfield
 import Material.Card as Card
 import Material.Layout as Layout
 import Material.List
@@ -55,6 +55,7 @@ type alias Connection =
     , portNumber : Int
     , username : String
     , database : String
+    , retryFailed : Maybe Bool
     }
 
 
@@ -90,7 +91,8 @@ type Msg
     = FormMsg Form.Msg
     | Mdl (Material.Msg Msg)
     | ConnectToDatabase Connection (Result Http.Error SessionId)
-    | RetryConnection SessionId (Result Http.Error SessionId)
+    | RetryConnection SessionId
+    | NewRetriedConnection SessionId (Result Http.Error SessionId)
     | GetDatabases (Result Http.Error (List Database))
     | ReceiveFromLocalStorage ( String, Decode.Value )
     | ReceiveFromSessionStorage ( String, Decode.Value )
@@ -147,6 +149,7 @@ connectionEncoder connection =
             , ( "port", Encode.int connection.portNumber )
             , ( "username", Encode.string connection.username )
             , ( "database", Encode.string connection.database )
+              -- , ( "retryFailed", Encode.bool connection.retryFailed )
             ]
     in
         Encode.object attributes
@@ -174,6 +177,7 @@ send connectionInfo =
             , portNumber = connectionInfo.portNumber
             , username = connectionInfo.username
             , database = connectionInfo.database
+            , retryFailed = Nothing
             }
         )
         (connect connectionInfo)
@@ -182,9 +186,9 @@ send connectionInfo =
 retryConnection : SessionId -> Cmd Msg
 retryConnection sessionid =
     Http.send
-        (RetryConnection sessionid)
+        (NewRetriedConnection sessionid)
         (Http.post
-            (getApiUrl ++ "/retry")
+            (getApiUrl ++ "/connection/retry")
             (Encode.string sessionid
                 |> Http.jsonBody
             )
@@ -225,11 +229,12 @@ init =
 
 connectionDecoder : Decode.Decoder Connection
 connectionDecoder =
-    Decode.map4 Connection
+    Decode.map5 Connection
         (Decode.field "host" Decode.string)
         (Decode.field "port" Decode.int)
         (Decode.field "username" Decode.string)
         (Decode.field "database" Decode.string)
+        (Decode.maybe (Decode.field "retryFailed" Decode.bool))
 
 
 storageDecoder : Decode.Decoder DbSessions
@@ -271,11 +276,67 @@ update msg model =
         ConnectToDatabase connectionInfo (Err _) ->
             ( model, Cmd.none )
 
+        RetryConnection sessionId ->
+            ( model, retryConnection sessionId )
+
+        NewRetriedConnection _ (Ok sessionId) ->
+            let
+                sessionMaybe =
+                    Dict.get sessionId model.inActiveDbSessions
+            in
+                Maybe.map
+                    (\session ->
+                        ( { model | activeDbSessions = Dict.insert sessionId session model.activeDbSessions }
+                        , pushItemInSessionStorage ( storageKey, (storageEncoder sessionId session) )
+                        )
+                    )
+                    sessionMaybe
+                    |> Maybe.withDefault
+                        ( model
+                        , Cmd.none
+                        )
+
+        NewRetriedConnection failedSessionId (Err err) ->
+            let
+                _ =
+                    Debug.log "ERR" err
+
+                failedSessionMaybe =
+                    Dict.get failedSessionId model.inActiveDbSessions
+
+                updateKey : (Maybe Connection -> Maybe Connection) -> Dict String Connection
+                updateKey session =
+                    Dict.update failedSessionId session model.inActiveDbSessions
+            in
+                ( { model
+                    | inActiveDbSessions =
+                        (Maybe.map
+                            (\session -> { session | retryFailed = Just True })
+                            |> updateKey
+                        )
+                  }
+                , Cmd.none
+                )
+
         ReceiveFromLocalStorage ( storageKey, item ) ->
             case Decode.decodeValue storageDecoder item of
-                Ok sessions ->
-                    ( { model | inActiveDbSessions = sessions }, Cmd.none )
+                Ok inActiveSessions ->
+                    let
+                        newModel =
+                            { model | inActiveDbSessions = inActiveSessions }
+                    in
+                        ( newModel
+                        , inActiveSessions
+                            |> Dict.keys
+                            |> List.map retryConnection
+                            |> Cmd.batch
+                          -- , Cmd.batch (List.map retryConnection (Dict.keys inActiveSessions))
+                          -- |> List.map RetryConnection
+                          -- |>
+                          --     Cmd.batch
+                        )
 
+                -- ( { model | inActiveDbSessions = sessions }, Cmd.none )
                 Err err ->
                     Debug.log err
                         ( model, Cmd.none )
@@ -296,8 +357,48 @@ update msg model =
             ( model, Cmd.none )
 
 
-connectionFormView : Model -> Html Msg
-connectionFormView model =
+connectionFormRow :
+    Maybe String
+    -> Model
+    -> { b | value : Maybe String, path : String }
+    -> String
+    -> Material.Textfield.Property Msg
+    -> Html Msg
+connectionFormRow maybeValue model fieldObject label fieldType =
+    case maybeValue of
+        Maybe.Just value ->
+            Material.Textfield.render
+                Mdl
+                [ 0 ]
+                model.mdl
+                [ Material.Textfield.label label
+                , Material.Textfield.floatingLabel
+                , fieldType
+                , Material.Textfield.value <| Maybe.withDefault value fieldObject.value
+                , onMaterialInput FormMsg fieldObject.path
+                , onMaterialFocus FormMsg fieldObject.path
+                , onMaterialBlur FormMsg fieldObject.path
+                ]
+                []
+
+        Maybe.Nothing ->
+            Material.Textfield.render
+                Mdl
+                [ 0 ]
+                model.mdl
+                [ Material.Textfield.label label
+                , Material.Textfield.floatingLabel
+                , fieldType
+                , Material.Textfield.value <| Maybe.withDefault "" fieldObject.value
+                , onMaterialInput FormMsg fieldObject.path
+                , onMaterialFocus FormMsg fieldObject.path
+                , onMaterialBlur FormMsg fieldObject.path
+                ]
+                []
+
+
+connectionFormView : Model -> Maybe Connection -> Html Msg
+connectionFormView model connectionInfo =
     let
         -- error presenter
         errorFor field =
@@ -334,72 +435,11 @@ connectionFormView model =
     in
         Card.view []
             [ cardBlock
-                [ Textfield.render
-                    Mdl
-                    [ 0 ]
-                    model.mdl
-                    [ Textfield.label "Host"
-                    , Textfield.floatingLabel
-                    , Textfield.text_
-                    , Textfield.value <| Maybe.withDefault "" host.value
-                    , onMaterialInput FormMsg host.path
-                    , onMaterialFocus FormMsg host.path
-                    , onMaterialBlur FormMsg host.path
-                    ]
-                    []
-                , Textfield.render
-                    Mdl
-                    [ 1 ]
-                    model.mdl
-                    [ Textfield.label "Port"
-                    , Textfield.floatingLabel
-                    , Textfield.text_
-                    , Textfield.value <| Maybe.withDefault "" portNumber.value
-                    , onMaterialInput FormMsg portNumber.path
-                    , onMaterialFocus FormMsg portNumber.path
-                    , onMaterialBlur FormMsg portNumber.path
-                    ]
-                    []
-                , Textfield.render
-                    Mdl
-                    [ 2 ]
-                    model.mdl
-                    [ Textfield.label "Username"
-                    , Textfield.floatingLabel
-                    , Textfield.text_
-                    , Textfield.value <| Maybe.withDefault "" username.value
-                    , onMaterialInput FormMsg username.path
-                    , onMaterialFocus FormMsg username.path
-                    , onMaterialBlur FormMsg username.path
-                    ]
-                    []
-                , Textfield.render
-                    Mdl
-                    [ 3 ]
-                    model.mdl
-                    [ Textfield.label "Password"
-                    , Textfield.floatingLabel
-                    , Textfield.password
-                    , Textfield.value <| Maybe.withDefault "" password.value
-                    , onMaterialInput FormMsg password.path
-                    , onMaterialFocus FormMsg password.path
-                    , onMaterialBlur FormMsg password.path
-                    ]
-                    []
-                , Textfield.render
-                    Mdl
-                    [ 4 ]
-                    model.mdl
-                    [ Textfield.label "Database"
-                    , Textfield.floatingLabel
-                    , Textfield.text_
-                    , Textfield.value <| Maybe.withDefault "" database.value
-                    , onMaterialInput FormMsg database.path
-                    , onMaterialFocus FormMsg database.path
-                    , onMaterialBlur FormMsg database.path
-                    , Options.attribute <| Html.Attributes.type_ "number"
-                    ]
-                    [ Options.attribute <| Html.Attributes.type_ "number" ]
+                [ connectionFormRow (Maybe.map .host connectionInfo) model host "Host" Material.Textfield.text_
+                , connectionFormRow (Maybe.map (.portNumber >> toString) connectionInfo) model portNumber "Port" Material.Textfield.text_
+                , connectionFormRow (Maybe.map .username connectionInfo) model username "Username" Material.Textfield.text_
+                , connectionFormRow Nothing model password "Password" Material.Textfield.password
+                , connectionFormRow (Maybe.map .database connectionInfo) model database "Database" Material.Textfield.text_
                   -- , Html.label
                   --     []
                   --     [ text "Port" ]
@@ -428,9 +468,6 @@ connectionFormView model =
                     [ Button.raised, Button.primary, Button.ripple, onSubmit FormMsg ]
                     [ text "Connect" ]
                 ]
-              -- , Html.button
-              --     [ onClick Form.Submit ]
-              --     [ text "Connect" ]
             ]
 
 
@@ -491,27 +528,66 @@ sessionListView model dbSessions =
         ]
 
 
+connectionDialog : Model -> Maybe Connection -> Html Msg
+connectionDialog model connectionMaybe =
+    Material.Dialog.view
+        []
+        [ Material.Dialog.title [] [ text "Reconnect" ]
+        , Material.Dialog.content []
+            [ connectionFormView model connectionMaybe ]
+        , Material.Dialog.actions []
+            [ Button.render Mdl
+                [ 0 ]
+                model.mdl
+                [ Material.Dialog.closeOn "click" ]
+                [ text "Reconnect" ]
+            , Button.render Mdl
+                [ 1 ]
+                model.mdl
+                [ Material.Dialog.closeOn "click" ]
+                [ text "Cancel" ]
+            ]
+        ]
+
+
 sessionListItemView : Model -> { sessionId : SessionId, connection : Connection } -> Bool -> Html Msg
 sessionListItemView model { sessionId, connection } active =
-    Material.List.li [ Material.List.withSubtitle ]
-        [ Material.List.content []
-            [ text connection.database
-            , Material.List.subtitle
-                []
-                [ text (connection.host ++ ":" ++ (connection.portNumber |> toString)) ]
-            ]
-        , if not active then
-            Material.List.content2 []
-                [ Button.render Mdl
-                    [ 0 ]
-                    model.mdl
-                    [ Button.raised, Button.primary, Button.ripple ]
-                    -- , (Options.onClick (retryConnection sessionId))
-                    [ text "Connect" ]
+    let
+        failedSessionMaybe =
+            Dict.get sessionId model.inActiveDbSessions
+    in
+        Material.List.li [ Material.List.withSubtitle ]
+            [ Material.List.content []
+                [ text connection.database
+                , Material.List.subtitle
+                    []
+                    [ text (connection.host ++ ":" ++ (connection.portNumber |> toString)) ]
                 ]
-          else
-            div [] []
-        ]
+            , if not active then
+                Material.List.content2 []
+                    [ Button.render Mdl
+                        [ 0 ]
+                        model.mdl
+                        [ Button.raised
+                        , Button.primary
+                        , Button.ripple
+                        , Material.Dialog.openOn "click"
+                        ]
+                        [ text "Reconnect" ]
+                    , case
+                        (failedSessionMaybe
+                            |> Maybe.andThen (.retryFailed)
+                        )
+                      of
+                        Just failed ->
+                            connectionDialog model failedSessionMaybe
+
+                        Nothing ->
+                            div [] []
+                    ]
+              else
+                div [] []
+            ]
 
 
 view : Model -> Html Msg
@@ -534,7 +610,7 @@ view model =
                             , Css.flex (Css.int 1)
                             ]
                         ]
-                        [ connectionFormView model ]
+                        [ connectionFormView model Maybe.Nothing ]
                 ]
             ]
     in
