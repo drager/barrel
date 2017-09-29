@@ -7,7 +7,6 @@ function initPorts(ports) {
   function setItem([key, value], storage) {
     console.log('Setting by key', key);
     console.log('Setting for value', value);
-    console.log('Setting for storage', storage);
     storage.setItem(key, JSON.stringify(value));
   }
 
@@ -46,6 +45,7 @@ function initPorts(ports) {
 
   ports.getItemInLocalStorage.subscribe(function(key) {
     const item = getItem(key, localStorage);
+    console.log('LocalItem', item);
     ports.localStorageGetItemResponse.send([key, item]);
   });
 
@@ -67,7 +67,8 @@ function initPorts(ports) {
 
   ports.getItemInSessionStorage.subscribe(function(key) {
     const item = getItem(key, sessionStorage);
-    ports.localStorageGetItemResponse.send([key, item]);
+    console.log('SessionItem', item);
+    ports.sessionStorageGetItemResponse.send([key, item]);
   });
 
   ports.clearSessionStorage.subscribe(function(i) {
