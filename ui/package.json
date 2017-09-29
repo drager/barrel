@@ -16,5 +16,8 @@
     "electron-hot-loader": "^0.8.0",
     "electron-packager": "^9.0.0",
     "nodemon": "^1.11.0"
+  },
+  "dependencies": {
+    "dialog-polyfill": "^0.4.9"
   }
 }
