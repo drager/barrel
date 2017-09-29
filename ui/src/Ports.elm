@@ -11,6 +11,10 @@ type alias Value =
     Json.Encode.Value
 
 
+
+-- TODO: Maybe make on and only "storageGetItemResponse" and "getItemFromStorage" instead.
+
+
 port localStorageGetItemResponse : (( Key, Value ) -> msg) -> Sub msg
 
 
