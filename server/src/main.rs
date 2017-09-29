@@ -28,7 +28,8 @@ fn main() {
     };
 
     rocket::ignite()
-        .mount("/", routes![api::connect, api::get_databases])
+        .mount("/",
+               routes![api::connect, api::get_databases, api::connection_retry])
         .manage(init_sessions())
         .attach(options)
         .launch();

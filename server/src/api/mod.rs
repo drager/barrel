@@ -64,6 +64,25 @@ pub fn connect(connection_information: Json<ConnectionInformation>,
         })?
 }
 
+#[post("/connection/retry", data = "<session_id>")]
+pub fn connection_retry(session_id: Json<SessionId>,
+                        db_sessions: DbSessions)
+                        -> Result<Json<ConnectionResponse>, ApiError> {
+    // TODO: Break this out into a function? Maybe on the Struct?
+    db_sessions
+        .get(&*session_id)
+        .ok_or(ApiError::NoDbSession)
+        .and_then(|db_session| match db_session.get() {
+                      Ok(_db_conn) => {
+                          Ok(Json(ConnectionResponse {
+                                      session_id: session_id.clone(),
+                                      status: Status::Ok,
+                                  }))
+                      }
+                      Err(_) => Err(ApiError::NoDbSession),
+                  })
+}
+
 #[get("/databases")]
 pub fn get_databases(session_id: SessionId,
                      db_sessions: DbSessions)
