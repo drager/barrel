@@ -4,7 +4,25 @@ import { Main } from './Main.elm';
 var app = Main.embed(document.getElementById('app'));
 
 function initPorts(ports) {
+  function removeItemInList([key, value], storage) {
+    const item = getItem(key, storage);
+    const list = item instanceof Object ? item : {};
+    const newList = Object.keys(list)
+      .filter(i => (console.log('i', i), i !== value))
+      .reduce((obj, key) => {
+        obj[key] = list[key];
+        return obj;
+      }, {});
+    setItem([key, newList], storage)
+  }
+
   function setItem([key, value], storage) {
+    console.log('Setting by key', key);
+    console.log('Setting for value', value);
+    storage.setItem(key, JSON.stringify(value));
+  }
+
+  function removeItem([key, value], storage) {
     console.log('Setting by key', key);
     console.log('Setting for value', value);
     storage.setItem(key, JSON.stringify(value));
@@ -35,48 +53,56 @@ function initPorts(ports) {
     setItem([key, list], storage);
   }
 
-  ports.setItemInLocalStorage.subscribe(function(keyValue) {
+  ports.setItemInLocalStorage.subscribe(function (keyValue) {
     setItem(keyValue, localStorage);
   });
 
-  ports.removeItemInLocalStorage.subscribe(function(key) {
+  ports.removeItemInLocalStorage.subscribe(function (key) {
     localStorage.removeItem(key);
   });
 
-  ports.getItemInLocalStorage.subscribe(function(key) {
+  ports.getItemInLocalStorage.subscribe(function (key) {
     const item = getItem(key, localStorage);
     console.log('LocalItem', item);
     ports.localStorageGetItemResponse.send([key, item]);
   });
 
-  ports.clearLocalStorage.subscribe(function(i) {
+  ports.clearLocalStorage.subscribe(function (i) {
     localStorage.clear();
   });
 
-  ports.pushItemInLocalStorage.subscribe(function(keyValue) {
+  ports.pushItemInLocalStorage.subscribe(function (keyValue) {
     pushItem(keyValue, localStorage);
   });
 
-  ports.setItemInSessionStorage.subscribe(function(keyValue) {
+  ports.removeItemFromListInLocalStorage.subscribe(function (keyValue) {
+    removeItemInList(keyValue, localStorage);
+  });
+
+  ports.setItemInSessionStorage.subscribe(function (keyValue) {
     setItem(keyValue, sessionStorage);
   });
 
-  ports.removeItemInSessionStorage.subscribe(function(key) {
+  ports.removeItemInSessionStorage.subscribe(function (key) {
     sessionStorage.removeItem(key);
   });
 
-  ports.getItemInSessionStorage.subscribe(function(key) {
+  ports.getItemInSessionStorage.subscribe(function (key) {
     const item = getItem(key, sessionStorage);
     console.log('SessionItem', item);
     ports.sessionStorageGetItemResponse.send([key, item]);
   });
 
-  ports.clearSessionStorage.subscribe(function(i) {
+  ports.clearSessionStorage.subscribe(function (i) {
     sessionStorage.clear();
   });
 
-  ports.pushItemInSessionStorage.subscribe(function(keyValue) {
+  ports.pushItemInSessionStorage.subscribe(function (keyValue) {
     pushItem(keyValue, sessionStorage);
+  });
+
+  ports.removeItemFromListInSessionStorage.subscribe(function (keyValue) {
+    removeItemInList(keyValue, sessionStorage);
   });
 }
 

@@ -342,7 +342,12 @@ update msg model =
                 sessions =
                     Dict.remove sessionId model.activeDbSessions
             in
-                ( { model | activeDbSessions = sessions }, Cmd.none )
+                ( { model | activeDbSessions = sessions }
+                , Cmd.batch
+                    [ Ports.removeItemFromListInLocalStorage ( storageKey, (Encode.string sessionId) )
+                    , Ports.removeItemFromListInSessionStorage ( storageKey, (Encode.string sessionId) )
+                    ]
+                )
 
         ReceiveFromLocalStorage ( storageKey, item ) ->
             case Decode.decodeValue storageDecoder item of
@@ -646,6 +651,7 @@ view model =
                         [ model.activeDbSessions
                             |> sessionListView model
                         , listDatabasesView model
+                        , connectionFormView model Maybe.Nothing
                         ]
                   else if not (Dict.isEmpty model.inActiveDbSessions) then
                     model.inActiveDbSessions

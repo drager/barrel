@@ -36,6 +36,12 @@ port clearLocalStorage : () -> Cmd msg
 port pushItemInLocalStorage : ( Key, Value ) -> Cmd msg
 
 
+port removeItemFromListInLocalStorage : ( Key, Value ) -> Cmd msg
+
+
+port removeItemFromListInSessionStorage : ( Key, Value ) -> Cmd msg
+
+
 port setItemInSessionStorage : ( Key, Value ) -> Cmd msg
 
 
