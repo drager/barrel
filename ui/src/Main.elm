@@ -91,12 +91,13 @@ type alias SessionId =
 type Msg
     = FormMsg Form.Msg
     | Mdl (Material.Msg Msg)
-    | ConnectToDatabase Connection (Result Http.Error SessionId)
-    | RetryConnection SessionId
-    | NewRetriedConnection SessionId (Result Http.Error SessionId)
-    | GetDatabases (Result Http.Error (List Database))
     | ReceiveFromLocalStorage ( String, Decode.Value )
     | ReceiveFromSessionStorage ( String, Decode.Value )
+    | ConnectToDatabase Connection (Result Http.Error SessionId)
+    | RetryConnection SessionId
+    | Disconnect SessionId
+    | NewRetriedConnection SessionId (Result Http.Error SessionId)
+    | GetDatabases (Result Http.Error (List Database))
 
 
 storageKey : String
@@ -331,8 +332,13 @@ update msg model =
                         )
                   }
                 , Cmd.none
-                )
-
+                ) 
+        
+        Disconnect sessionId ->
+            let sessions =
+                Dict.remove sessionId model.activeDbSessions
+            in  ( { model | activeDbSessions = sessions }, Cmd.none ) 
+ 
         ReceiveFromLocalStorage ( storageKey, item ) ->
             case Decode.decodeValue storageDecoder item of
                 Ok inActiveSessions ->
@@ -611,7 +617,17 @@ sessionListItemView model { sessionId, connection } active =
                             div [] []
                     ]
               else
-                div [] []
+                Material.List.content2 []
+                    [ Button.render Mdl
+                        [ 0 ]
+                        model.mdl
+                        [ Button.raised
+                        , Button.primary
+                        , Button.ripple
+                        , Material.Options.onClick (Disconnect sessionId)
+                        ]
+                        [ text "Disconnect" ]
+                    ]
             ]
 
 
