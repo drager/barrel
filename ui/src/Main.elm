@@ -303,7 +303,10 @@ update msg model =
                 Maybe.map
                     (\session ->
                         ( { model | activeDbSessions = Dict.insert sessionId session model.activeDbSessions }
-                        , pushItemInSessionStorage ( storageKey, (storageEncoder sessionId session) )
+                        , Cmd.batch
+                            [ pushItemInSessionStorage ( storageKey, (storageEncoder sessionId session) )
+                            , getDatabases sessionId
+                            ]
                         )
                     )
                     sessionMaybe
@@ -332,13 +335,15 @@ update msg model =
                         )
                   }
                 , Cmd.none
-                ) 
-        
+                )
+
         Disconnect sessionId ->
-            let sessions =
-                Dict.remove sessionId model.activeDbSessions
-            in  ( { model | activeDbSessions = sessions }, Cmd.none ) 
- 
+            let
+                sessions =
+                    Dict.remove sessionId model.activeDbSessions
+            in
+                ( { model | activeDbSessions = sessions }, Cmd.none )
+
         ReceiveFromLocalStorage ( storageKey, item ) ->
             case Decode.decodeValue storageDecoder item of
                 Ok inActiveSessions ->
