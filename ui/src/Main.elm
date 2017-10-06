@@ -81,6 +81,7 @@ type alias Model =
 type alias Database =
     { name : String
     , oid : Int
+    , sessionId : Maybe SessionId
     }
 
 
@@ -97,7 +98,7 @@ type Msg
     | RetryConnection SessionId
     | Disconnect SessionId
     | NewRetriedConnection SessionId (Result Http.Error SessionId)
-    | GetDatabases (Result Http.Error (List Database))
+    | GetDatabases SessionId (Result Http.Error (List Database))
 
 
 storageKey : String
@@ -107,9 +108,10 @@ storageKey =
 
 decodeDatabase : Decode.Decoder Database
 decodeDatabase =
-    Decode.map2 Database
+    Decode.map3 Database
         (Decode.field "name" Decode.string)
         (Decode.field "oid" Decode.int)
+        (Decode.maybe (decodeSessionId))
 
 
 decodeSessionId : Decode.Decoder SessionId
@@ -213,7 +215,7 @@ sessionIdRequest sessionId url decoder =
 
 getDatabases : SessionId -> Cmd Msg
 getDatabases sessionId =
-    Http.send (GetDatabases)
+    Http.send (GetDatabases sessionId)
         (sessionIdRequest sessionId (getApiUrl ++ "/databases") (Decode.list decodeDatabase))
 
 
@@ -274,6 +276,7 @@ update msg model =
                             Debug.log "FORM" user
                     in
                         -- TODO: Should be possible to do with Form.Reset?
+                        -- ( { model | form = Form.update validation (Form.Reset model.form) }
                         ( { model | form = Form.initial [] validation }
                         , send user
                         )
@@ -384,10 +387,14 @@ update msg model =
                     Debug.log err
                         ( model, Ports.getItemInLocalStorage storageKey )
 
-        GetDatabases (Ok databases) ->
-            ( { model | databases = databases }, Cmd.none )
+        GetDatabases sessionId (Ok databases) ->
+            let
+                databasesWithSession =
+                    List.map (\database -> { database | sessionId = Just sessionId }) databases
+            in
+                ( { model | databases = List.append databasesWithSession model.databases }, Cmd.none )
 
-        GetDatabases (Err _) ->
+        GetDatabases _ (Err _) ->
             ( model, Cmd.none )
 
 
@@ -540,7 +547,10 @@ databaseListItemView database =
             [ text database.name
             , Material.List.subtitle
                 []
-                [ text ("Oid: " ++ (database.oid |> toString)) ]
+                [ text ("Oid: " ++ (database.oid |> toString))
+                , text " - "
+                , (Maybe.map text database.sessionId) |> Maybe.withDefault ("" |> text)
+                ]
             ]
         ]
 
