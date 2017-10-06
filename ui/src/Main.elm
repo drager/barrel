@@ -273,7 +273,10 @@ update msg model =
                         b =
                             Debug.log "FORM" user
                     in
-                        ( model, send user )
+                        -- TODO: Should be possible to do with Form.Reset?
+                        ( { model | form = Form.initial [] validation }
+                        , send user
+                        )
 
                 _ ->
                     ( { model | form = Form.update validation formMsg model.form }, Cmd.none )
