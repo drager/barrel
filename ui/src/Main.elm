@@ -197,10 +197,23 @@ retryConnection sessionid =
         )
 
 
-getDatabases : Cmd Msg
-getDatabases =
+sessionIdRequest : SessionId -> String -> Decode.Decoder a -> Http.Request a
+sessionIdRequest sessionId url decoder =
+    Http.request
+        { method = "GET"
+        , headers = [ Http.header "X-Session-Id" sessionId ]
+        , url = url
+        , body = Http.emptyBody
+        , expect = Http.expectJson decoder
+        , timeout = Nothing
+        , withCredentials = False
+        }
+
+
+getDatabases : SessionId -> Cmd Msg
+getDatabases sessionId =
     Http.send (GetDatabases)
-        (Http.get (getApiUrl ++ "/databases") (Decode.list decodeDatabase))
+        (sessionIdRequest sessionId (getApiUrl ++ "/databases") (Decode.list decodeDatabase))
 
 
 validation : Validation () ConnectionForm
@@ -332,13 +345,8 @@ update msg model =
                             |> Dict.keys
                             |> List.map retryConnection
                             |> Cmd.batch
-                          -- , Cmd.batch (List.map retryConnection (Dict.keys inActiveSessions))
-                          -- |> List.map RetryConnection
-                          -- |>
-                          --     Cmd.batch
                         )
 
-                -- ( { model | inActiveDbSessions = sessions }, Cmd.none )
                 Err err ->
                     Debug.log err
                         ( model, Cmd.none )
@@ -346,7 +354,12 @@ update msg model =
         ReceiveFromSessionStorage ( storageKey, item ) ->
             case Decode.decodeValue storageDecoder item of
                 Ok sessions ->
-                    ( { model | activeDbSessions = sessions }, Cmd.none )
+                    ( { model | activeDbSessions = sessions }
+                    , sessions
+                        |> Dict.keys
+                        |> List.map getDatabases
+                        |> Cmd.batch
+                    )
 
                 Err err ->
                     Debug.log err
@@ -369,9 +382,8 @@ formField :
     -> Html Msg
 formField maybeValue model fieldObject label fieldType error =
     let
-        _ =
-            Debug.log "error" error
-
+        -- _ =
+        -- Debug.log "error" error
         render value =
             Material.Textfield.render
                 Mdl
@@ -494,13 +506,24 @@ mainView model children =
     ]
 
 
-listDatabasesView : Model -> Html msg
+listDatabasesView : Model -> Html Msg
 listDatabasesView model =
-    div [] []
+    div []
+        [ Material.List.ul []
+            (List.map databaseListItemView model.databases)
+        ]
 
 
-
--- div [] [ Html.map getDatabases ]
+databaseListItemView : Database -> Html Msg
+databaseListItemView database =
+    Material.List.li [ Material.List.withSubtitle ]
+        [ Material.List.content []
+            [ text database.name
+            , Material.List.subtitle
+                []
+                [ text ("Oid: " ++ (database.oid |> toString)) ]
+            ]
+        ]
 
 
 isSessionActive : SessionId -> ActiveDbSessions -> Bool
@@ -598,8 +621,11 @@ view model =
         children =
             [ div [ styles [ Css.flex (Css.int 1) ] ]
                 [ if not (Dict.isEmpty model.activeDbSessions) then
-                    model.activeDbSessions
-                        |> sessionListView model
+                    div []
+                        [ model.activeDbSessions
+                            |> sessionListView model
+                        , listDatabasesView model
+                        ]
                   else if not (Dict.isEmpty model.inActiveDbSessions) then
                     model.inActiveDbSessions
                         |> sessionListView model
