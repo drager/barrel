@@ -3,6 +3,7 @@ module Main exposing (..)
 import Html exposing (Html, text, div, img, h1)
 import Form exposing (Form)
 import Form.Error
+import Form.Field as Field exposing (Field)
 import Form.Validate as Validate exposing (field, map5, Validation)
 import Material
 import Material.Dialog
@@ -99,6 +100,7 @@ type Msg
     | Disconnect SessionId
     | NewRetriedConnection SessionId (Result Http.Error SessionId)
     | GetDatabases SessionId (Result Http.Error (List Database))
+    | SetReconnectionForm Connection
 
 
 storageKey : String
@@ -153,7 +155,8 @@ connectionEncoder connection =
             , ( "port", Encode.int connection.portNumber )
             , ( "username", Encode.string connection.username )
             , ( "database", Encode.string connection.database )
-              -- , ( "retryFailed", Encode.bool connection.retryFailed )
+
+            -- , ( "retryFailed", Encode.bool connection.retryFailed )
             ]
     in
         Encode.object attributes
@@ -380,6 +383,7 @@ update msg model =
                     , sessions
                         |> Dict.keys
                         |> List.map getDatabases
+                        -- |> List.append [ Ports.getItemInLocalStorage storageKey ]
                         |> Cmd.batch
                     )
 
@@ -397,46 +401,46 @@ update msg model =
         GetDatabases _ (Err _) ->
             ( model, Cmd.none )
 
+        SetReconnectionForm connection ->
+            ( { model | form = Form.initial (initialFields connection) validation }, Cmd.none )
+
 
 formField :
-    Maybe String
-    -> Model
+    Model
     -> { b | value : Maybe String, path : String }
     -> String
     -> Material.Textfield.Property Msg
     -> String
     -> Html Msg
-formField maybeValue model fieldObject label fieldType error =
-    let
-        -- _ =
-        -- Debug.log "error" error
-        render value =
-            Material.Textfield.render
-                Mdl
-                [ 0 ]
-                model.mdl
-                [ Material.Textfield.label label
-                , Material.Textfield.floatingLabel
-                , fieldType
-                , Material.Textfield.value <| Maybe.withDefault value fieldObject.value
-                , onMaterialInput FormMsg fieldObject.path
-                , onMaterialFocus FormMsg fieldObject.path
-                , onMaterialBlur FormMsg fieldObject.path
-                , Material.Textfield.error (error)
-                    |> Material.Options.when (not <| String.isEmpty error)
-                ]
-                []
-    in
-        case maybeValue of
-            Maybe.Just value ->
-                render value
-
-            Maybe.Nothing ->
-                render ""
+formField model fieldObject label fieldType error =
+    Material.Textfield.render
+        Mdl
+        [ 0 ]
+        model.mdl
+        [ Material.Textfield.label label
+        , Material.Textfield.floatingLabel
+        , fieldType
+        , Material.Textfield.value <| Maybe.withDefault "" fieldObject.value
+        , onMaterialInput FormMsg fieldObject.path
+        , onMaterialFocus FormMsg fieldObject.path
+        , onMaterialBlur FormMsg fieldObject.path
+        , Material.Textfield.error (error)
+            |> Material.Options.when (not <| String.isEmpty error)
+        ]
+        []
 
 
-connectionFormView : Model -> Maybe Connection -> Html Msg
-connectionFormView model connectionInfo =
+initialFields : Connection -> List ( String, Field )
+initialFields connectionInfo =
+    [ ( "host", Field.string connectionInfo.host )
+    , ( "port", Field.string (connectionInfo.portNumber |> toString) )
+    , ( "username", Field.string connectionInfo.username )
+    , ( "database", Field.string connectionInfo.database )
+    ]
+
+
+connectionFormView : Model -> Html Msg
+connectionFormView model =
     let
         -- error presenter
         errorFor field =
@@ -490,18 +494,18 @@ connectionFormView model connectionInfo =
     in
         Card.view []
             [ cardBlock
-                [ formField (Maybe.map .host connectionInfo) model host "Host" Material.Textfield.text_ (errorFor host)
-                , formField (Maybe.map (.portNumber >> toString) connectionInfo) model portNumber "Port" Material.Textfield.text_ (errorFor portNumber)
-                , formField (Maybe.map .username connectionInfo) model username "Username" Material.Textfield.text_ (errorFor username)
-                , formField Nothing model password "Password" Material.Textfield.password (errorFor password)
-                , formField (Maybe.map .database connectionInfo) model database "Database" Material.Textfield.text_ (errorFor database)
+                [ formField model host "Host" Material.Textfield.text_ (errorFor host)
+                , formField model portNumber "Port" Material.Textfield.text_ (errorFor portNumber)
+                , formField model username "Username" Material.Textfield.text_ (errorFor username)
+                , formField model password "Password" Material.Textfield.password (errorFor password)
+                , formField model database "Database" Material.Textfield.text_ (errorFor database)
                 , errorFor username |> text
                 ]
             , Card.actions []
                 [ Button.render Mdl
                     [ 5 ]
                     model.mdl
-                    (if List.isEmpty (Form.getErrors form) |> not then
+                    (if not (List.isEmpty (Form.getErrors form)) then
                         List.append [ Button.disabled ] buttonAttributes
                      else
                         buttonAttributes
@@ -570,25 +574,26 @@ sessionListView model dbSessions =
         [ Material.List.ul []
             (Dict.toList
                 dbSessions
-                |> List.map
-                    (\( key, value ) ->
+                |> List.indexedMap
+                    (\index ( key, value ) ->
                         sessionListItemView model
                             { sessionId = key
                             , connection = value
                             }
                             (isSessionActive key model.activeDbSessions)
+                            index
                     )
             )
         ]
 
 
-connectionDialog : Model -> Maybe Connection -> Html Msg
-connectionDialog model connectionMaybe =
+connectionDialog : Model -> Html Msg
+connectionDialog model =
     Material.Dialog.view
         []
         [ Material.Dialog.title [] [ text "Reconnect" ]
         , Material.Dialog.content []
-            [ connectionFormView model connectionMaybe ]
+            [ connectionFormView model ]
         , Material.Dialog.actions []
             [ Button.render Mdl
                 [ 0 ]
@@ -604,8 +609,33 @@ connectionDialog model connectionMaybe =
         ]
 
 
-sessionListItemView : Model -> { sessionId : SessionId, connection : Connection } -> Bool -> Html Msg
-sessionListItemView model { sessionId, connection } active =
+getFailedMaybe : Maybe Connection -> Maybe Bool
+getFailedMaybe failedSessionMaybe =
+    failedSessionMaybe
+        |> Maybe.andThen (.retryFailed)
+
+
+reconnectionView : Maybe Connection -> List (Material.Options.Property c Msg)
+reconnectionView failedSessionMaybe =
+    getFailedMaybe failedSessionMaybe
+        |> Maybe.andThen
+            (\_ ->
+                (Maybe.map
+                    (\failed ->
+                        ([ Material.Options.onClick (SetReconnectionForm failed)
+                         , Material.Dialog.openOn
+                            "click"
+                         ]
+                        )
+                    )
+                    failedSessionMaybe
+                )
+            )
+        |> Maybe.withDefault []
+
+
+sessionListItemView : Model -> { sessionId : SessionId, connection : Connection } -> Bool -> Int -> Html Msg
+sessionListItemView model { sessionId, connection } active index =
     let
         failedSessionMaybe =
             Dict.get sessionId model.inActiveDbSessions
@@ -620,21 +650,23 @@ sessionListItemView model { sessionId, connection } active =
             , if not active then
                 Material.List.content2 []
                     [ Button.render Mdl
-                        [ 0 ]
+                        [ index ]
                         model.mdl
-                        [ Button.raised
-                        , Button.primary
-                        , Button.ripple
-                        , Material.Dialog.openOn "click"
-                        ]
+                        (List.append
+                            [ Button.raised
+                            , Button.primary
+                            , Button.ripple
+                            ]
+                            (reconnectionView
+                                failedSessionMaybe
+                            )
+                        )
                         [ text "Reconnect" ]
                     , case
-                        (failedSessionMaybe
-                            |> Maybe.andThen (.retryFailed)
-                        )
+                        getFailedMaybe failedSessionMaybe
                       of
-                        Just failed ->
-                            connectionDialog model failedSessionMaybe
+                        Just _ ->
+                            connectionDialog model
 
                         Nothing ->
                             div [] []
@@ -663,12 +695,17 @@ view model =
                     div []
                         [ model.activeDbSessions
                             |> sessionListView model
+                        , model.inActiveDbSessions
+                            |> sessionListView model
                         , listDatabasesView model
-                        , connectionFormView model Maybe.Nothing
+                        , connectionFormView model
                         ]
                   else if not (Dict.isEmpty model.inActiveDbSessions) then
-                    model.inActiveDbSessions
-                        |> sessionListView model
+                    div []
+                        [ model.inActiveDbSessions
+                            |> sessionListView model
+                        , connectionFormView model
+                        ]
                   else
                     div
                         [ styles
@@ -678,7 +715,7 @@ view model =
                             , Css.flex (Css.int 1)
                             ]
                         ]
-                        [ connectionFormView model Maybe.Nothing ]
+                        [ connectionFormView model ]
                 ]
             ]
     in
