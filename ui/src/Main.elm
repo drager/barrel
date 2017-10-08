@@ -7,8 +7,10 @@ import Form.Field as Field exposing (Field)
 import Form.Validate as Validate exposing (field, map5, Validation)
 import Material
 import Material.Dialog
+import Material.Typography
 import Material.Button as Button
 import Material.Textfield
+import Material.Icon
 import Material.Card as Card
 import Material.Layout as Layout
 import Material.Options
@@ -52,6 +54,12 @@ type alias Mdl =
     Material.Model
 
 
+type alias CurrentSession =
+    { sessionId : SessionId
+    , connection : Connection
+    }
+
+
 type alias Connection =
     { host : String
     , portNumber : Int
@@ -76,6 +84,7 @@ type alias Model =
     , activeDbSessions : ActiveDbSessions
     , inActiveDbSessions : InactiveDbSessions
     , databases : List Database
+    , currentSession : Maybe CurrentSession
     }
 
 
@@ -239,6 +248,7 @@ init =
       , activeDbSessions = Dict.empty
       , inActiveDbSessions = Dict.empty
       , databases = []
+      , currentSession = Nothing
       }
     , Ports.getItemInSessionStorage storageKey
     )
@@ -291,7 +301,10 @@ update msg model =
             Material.update Mdl msg_ model
 
         ConnectToDatabase connectionInfo (Ok sessionId) ->
-            ( { model | activeDbSessions = Dict.insert sessionId connectionInfo model.activeDbSessions }
+            ( { model
+                | activeDbSessions = Dict.insert sessionId connectionInfo model.activeDbSessions
+                , currentSession = Maybe.Just { sessionId = sessionId, connection = connectionInfo }
+              }
             , Cmd.batch
                 [ pushItemInLocalStorage ( storageKey, (storageEncoder sessionId connectionInfo) )
                 , pushItemInSessionStorage ( storageKey, (storageEncoder sessionId connectionInfo) )
@@ -379,13 +392,31 @@ update msg model =
         ReceiveFromSessionStorage ( storageKey, item ) ->
             case Decode.decodeValue storageDecoder item of
                 Ok sessions ->
-                    ( { model | activeDbSessions = sessions }
-                    , sessions
-                        |> Dict.keys
-                        |> List.map getDatabases
-                        -- |> List.append [ Ports.getItemInLocalStorage storageKey ]
-                        |> Cmd.batch
-                    )
+                    let
+                        sessionIdMaybe =
+                            List.head (Dict.keys sessions)
+
+                        connectionMaybe =
+                            List.head (Dict.values sessions)
+
+                        newModel sessionId connection =
+                            ( { model
+                                | activeDbSessions = sessions
+                                , currentSession = Maybe.Just { sessionId = sessionId, connection = connection }
+                              }
+                            , sessions
+                                |> Dict.keys
+                                |> List.map getDatabases
+                                -- |> List.append [ Ports.getItemInLocalStorage storageKey ]
+                                |> Cmd.batch
+                            )
+                    in
+                        (Maybe.map2
+                            newModel
+                            sessionIdMaybe
+                            connectionMaybe
+                        )
+                            |> Maybe.withDefault ( model, Cmd.none )
 
                 Err err ->
                     Debug.log err
@@ -686,6 +717,88 @@ sessionListItemView model { sessionId, connection } active index =
             ]
 
 
+drawerItem : Icon -> String -> Html msg
+drawerItem icon itemText =
+    div
+        [ styles
+            [ Css.padding (Css.px 16)
+            , Css.displayFlex
+            , Css.displayFlex
+            , Css.alignItems (Css.center)
+            ]
+        ]
+        [ Html.span [ styles [ Css.color (Css.rgba 0 0 0 0.54) ] ] [ fontIcon icon ]
+        , Html.span [ styles [ Css.paddingLeft (Css.px 32) ] ]
+            [ Material.Options.styled
+                Html.span
+                [ Material.Typography.body2 ]
+                [ text itemText ]
+            ]
+        ]
+
+
+drawerHeader : CurrentSession -> Html msg
+drawerHeader currentSession =
+    let
+        titleRow =
+            div [ styles [ Css.paddingLeft (Css.px 16), Css.paddingRight (Css.px 16), Css.paddingBottom (Css.px 16) ] ]
+                [ Html.span [ styles [ Css.color (Css.hex "#ffffff") ] ]
+                    [ Material.Options.styled
+                        Html.span
+                        [ Material.Typography.body2 ]
+                        [ text currentSession.connection.database ]
+                    ]
+                , Html.div [ styles [ Css.color (Css.hex "#ffffff") ] ]
+                    [ Material.Options.styled
+                        Html.span
+                        [ Material.Typography.body1 ]
+                        [ text (currentSession.connection.host ++ ":" ++ (currentSession.connection.portNumber |> toString)) ]
+                    ]
+                ]
+    in
+        div
+            [ styles
+                [ Css.backgroundColor (Css.hex "#eeeeee")
+                , Css.backgroundSize Css.cover
+                ]
+            ]
+            [ div [ styles [ Css.padding (Css.px 16), Css.paddingTop (Css.px 32) ] ]
+                [ div
+                    [ styles
+                        [ Css.borderRadius (Css.px 50)
+                        , Css.backgroundColor (Css.hex "#ffffff")
+                        , Css.width (Css.px 56)
+                        , Css.height (Css.px 56)
+                        , Css.displayFlex
+                        , Css.justifyContent (Css.center)
+                        , Css.alignItems (Css.center)
+                        ]
+                    ]
+                    [ fontIcon { iconName = "server", iconSize = 24, isCustomIcon = True } ]
+                ]
+            , titleRow
+            ]
+
+
+drawer : Model -> List (Html Msg)
+drawer model =
+    [ div
+        []
+        [ (Maybe.map drawerHeader model.currentSession |> Maybe.withDefault (div [] []))
+        , div
+            [ styles
+                [ Css.displayFlex
+                , Css.flex (Css.int 1)
+                , Css.flexDirection (Css.column)
+                ]
+            ]
+            [ drawerItem { iconName = "server", iconSize = 24, isCustomIcon = True } "Active connections"
+            , drawerItem { iconName = "server-off", iconSize = 24, isCustomIcon = True } "Inactive connections"
+            ]
+        ]
+    ]
+
+
 view : Model -> Html Msg
 view model =
     let
@@ -722,8 +835,8 @@ view model =
         div []
             [ Layout.render Mdl
                 model.mdl
-                [ Layout.fixedHeader, Layout.seamed ]
-                { header = header model, drawer = [], main = mainView model children, tabs = ( [], [] ) }
+                [ Layout.fixedHeader, Layout.seamed, Layout.fixedDrawer ]
+                { header = header model, drawer = drawer model, main = mainView model children, tabs = ( [], [] ) }
             ]
 
 
