@@ -9,8 +9,8 @@ import Material
 import Material.Dialog
 import Material.Typography
 import Material.Button as Button
+import Material.Button
 import Material.Textfield
-import Material.Icon
 import Material.Card as Card
 import Material.Layout as Layout
 import Material.Options
@@ -164,8 +164,7 @@ connectionEncoder connection =
             , ( "port", Encode.int connection.portNumber )
             , ( "username", Encode.string connection.username )
             , ( "database", Encode.string connection.database )
-
-            -- , ( "retryFailed", Encode.bool connection.retryFailed )
+              -- , ( "retryFailed", Encode.bool connection.retryFailed )
             ]
     in
         Encode.object attributes
@@ -408,7 +407,8 @@ update msg model =
                                 |> Dict.keys
                                 |> List.map getDatabases
                                 -- |> List.append [ Ports.getItemInLocalStorage storageKey ]
-                                |> Cmd.batch
+                                |>
+                                    Cmd.batch
                             )
                     in
                         (Maybe.map2
@@ -737,28 +737,58 @@ drawerItem icon itemText =
         ]
 
 
-drawerHeader : CurrentSession -> Html msg
-drawerHeader currentSession =
+drawerHeader : CurrentSession -> Model -> Html Msg
+drawerHeader currentSession model =
     let
         titleRow =
-            div [ styles [ Css.paddingLeft (Css.px 16), Css.paddingRight (Css.px 16), Css.paddingBottom (Css.px 16) ] ]
+            div
+                [ styles
+                    [ Css.paddingLeft (Css.px 16)
+                    , Css.paddingRight (Css.px 16)
+                    , Css.paddingBottom (Css.px 16)
+                    ]
+                ]
                 [ Html.span [ styles [ Css.color (Css.hex "#ffffff") ] ]
                     [ Material.Options.styled
                         Html.span
                         [ Material.Typography.body2 ]
                         [ text currentSession.connection.database ]
                     ]
-                , Html.div [ styles [ Css.color (Css.hex "#ffffff") ] ]
-                    [ Material.Options.styled
-                        Html.span
-                        [ Material.Typography.body1 ]
-                        [ text (currentSession.connection.host ++ ":" ++ (currentSession.connection.portNumber |> toString)) ]
+                , Html.div [ styles [ Css.displayFlex, Css.alignItems (Css.center) ] ]
+                    [ Html.div
+                        [ styles
+                            [ Css.flex (Css.int 1)
+                            , Css.color (Css.hex "#ffffff")
+                            ]
+                        ]
+                        [ Material.Options.styled
+                            Html.span
+                            [ Material.Typography.body1 ]
+                            [ text
+                                (currentSession.connection.host
+                                    ++ ":"
+                                    ++ (currentSession.connection.portNumber |> toString)
+                                )
+                            ]
+                        ]
+                    , Html.div
+                        [ styles
+                            [ Css.color (Css.hex "#ffffff")
+                            ]
+                        ]
+                        [ Material.Button.render Mdl
+                            []
+                            model.mdl
+                            [ Material.Button.icon
+                            ]
+                            [ fontIcon { iconName = "keyboard_arrow_down", iconType = MaterialIcon } ]
+                        ]
                     ]
                 ]
     in
         div
             [ styles
-                [ Css.backgroundColor (Css.hex "#eeeeee")
+                [ Css.backgroundColor (Css.rgb 96 125 139)
                 , Css.backgroundSize Css.cover
                 ]
             ]
@@ -774,7 +804,7 @@ drawerHeader currentSession =
                         , Css.alignItems (Css.center)
                         ]
                     ]
-                    [ fontIcon { iconName = "server", iconSize = 24, isCustomIcon = True } ]
+                    [ fontIcon { iconName = "server", iconType = CustomMaterialIcon } ]
                 ]
             , titleRow
             ]
@@ -784,7 +814,9 @@ drawer : Model -> List (Html Msg)
 drawer model =
     [ div
         []
-        [ (Maybe.map drawerHeader model.currentSession |> Maybe.withDefault (div [] []))
+        [ (Maybe.map (\currentSession -> drawerHeader currentSession model) model.currentSession
+            |> Maybe.withDefault (div [] [])
+          )
         , div
             [ styles
                 [ Css.displayFlex
@@ -792,8 +824,16 @@ drawer model =
                 , Css.flexDirection (Css.column)
                 ]
             ]
-            [ drawerItem { iconName = "server", iconSize = 24, isCustomIcon = True } "Active connections"
-            , drawerItem { iconName = "server-off", iconSize = 24, isCustomIcon = True } "Inactive connections"
+            [ drawerItem
+                { iconName = "server"
+                , iconType = CustomMaterialIcon
+                }
+                "Active connections"
+            , drawerItem
+                { iconName = "server-off"
+                , iconType = CustomMaterialIcon
+                }
+                "Inactive connections"
             ]
         ]
     ]
