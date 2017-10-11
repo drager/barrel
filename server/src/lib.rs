@@ -2,15 +2,15 @@
 #![plugin(rocket_codegen)]
 
 extern crate postgres;
-extern crate rocket;
-extern crate rocket_contrib;
 extern crate r2d2;
 extern crate r2d2_postgres;
-extern crate uuid;
-#[macro_use]
-extern crate serde_json;
+extern crate rocket;
+extern crate rocket_contrib;
 #[macro_use]
 extern crate serde_derive;
+#[macro_use]
+extern crate serde_json;
+extern crate uuid;
 
 pub mod connection;
 pub mod api;

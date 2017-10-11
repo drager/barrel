@@ -1,18 +1,18 @@
 #![feature(plugin)]
 #![plugin(rocket_codegen)]
 
-extern crate rocket;
 extern crate database_manager;
+extern crate rocket;
 extern crate rocket_cors;
 
 use database_manager::api;
 use database_manager::api::db_pool::init_sessions;
-use rocket_cors::{AllowedOrigins, AllowedHeaders};
+use rocket_cors::{AllowedHeaders, AllowedOrigins};
 use rocket::http::Method;
 
 fn main() {
-    let (allowed_origins, failed_origins) = AllowedOrigins::some(&["http://localhost:3000",
-                                                                   "http://127.0.0.1:3000"]);
+    let (allowed_origins, failed_origins) =
+        AllowedOrigins::some(&["http://localhost:3000", "http://127.0.0.1:3000"]);
     assert!(failed_origins.is_empty());
 
     // You can also deserialize this
@@ -28,8 +28,10 @@ fn main() {
     };
 
     rocket::ignite()
-        .mount("/",
-               routes![api::connect, api::get_databases, api::connection_retry])
+        .mount(
+            "/",
+            routes![api::connect, api::get_databases, api::connection_retry],
+        )
         .manage(init_sessions())
         .attach(options)
         .launch();
