@@ -1,6 +1,7 @@
 module Main exposing (..)
 
 import Html exposing (Html, text, div, img, h1)
+import Html.Attributes
 import Form exposing (Form)
 import Form.Error
 import Form.Field as Field exposing (Field)
@@ -23,6 +24,8 @@ import Json.Decode as Decode
 import Json.Encode as Encode
 import Ports exposing (..)
 import Utils exposing (..)
+import Drawer
+import Polymer
 
 
 -- type alias Connection = { host : String, username : String }
@@ -85,6 +88,7 @@ type alias Model =
     , inActiveDbSessions : InactiveDbSessions
     , databases : List Database
     , currentSession : Maybe CurrentSession
+    , drawerModel : Drawer.Model
     }
 
 
@@ -110,6 +114,7 @@ type Msg
     | NewRetriedConnection SessionId (Result Http.Error SessionId)
     | GetDatabases SessionId (Result Http.Error (List Database))
     | SetReconnectionForm Connection
+    | DrawerMsg Drawer.Msg
 
 
 storageKey : String
@@ -242,15 +247,20 @@ validation =
 
 init : ( Model, Cmd Msg )
 init =
-    ( { form = Form.initial [] validation
-      , mdl = Material.model
-      , activeDbSessions = Dict.empty
-      , inActiveDbSessions = Dict.empty
-      , databases = []
-      , currentSession = Nothing
-      }
-    , Ports.getItemInSessionStorage storageKey
-    )
+    let
+        ( drawerModel, _ ) =
+            Drawer.init
+    in
+        ( { form = Form.initial [] validation
+          , mdl = Material.model
+          , activeDbSessions = Dict.empty
+          , inActiveDbSessions = Dict.empty
+          , databases = []
+          , currentSession = Nothing
+          , drawerModel = drawerModel
+          }
+        , Ports.getItemInSessionStorage storageKey
+        )
 
 
 connectionDecoder : Decode.Decoder Connection
@@ -434,6 +444,13 @@ update msg model =
 
         SetReconnectionForm connection ->
             ( { model | form = Form.initial (initialFields connection) validation }, Cmd.none )
+
+        DrawerMsg drawerMsg ->
+            let
+                ( updatedDrawerModel, drawerCmd ) =
+                    Drawer.update drawerMsg model.drawerModel
+            in
+                ( { model | drawerModel = updatedDrawerModel }, Cmd.map DrawerMsg drawerCmd )
 
 
 formField :
@@ -717,128 +734,6 @@ sessionListItemView model { sessionId, connection } active index =
             ]
 
 
-drawerItem : Icon -> String -> Html msg
-drawerItem icon itemText =
-    div
-        [ styles
-            [ Css.padding (Css.px 16)
-            , Css.displayFlex
-            , Css.displayFlex
-            , Css.alignItems (Css.center)
-            ]
-        ]
-        [ Html.span [ styles [ Css.color (Css.rgba 0 0 0 0.54) ] ] [ fontIcon icon ]
-        , Html.span [ styles [ Css.paddingLeft (Css.px 32) ] ]
-            [ Material.Options.styled
-                Html.span
-                [ Material.Typography.body2 ]
-                [ text itemText ]
-            ]
-        ]
-
-
-drawerHeader : CurrentSession -> Model -> Html Msg
-drawerHeader currentSession model =
-    let
-        titleRow =
-            div
-                [ styles
-                    [ Css.paddingLeft (Css.px 16)
-                    , Css.paddingRight (Css.px 16)
-                    , Css.paddingBottom (Css.px 16)
-                    ]
-                ]
-                [ Html.span [ styles [ Css.color (Css.hex "#ffffff") ] ]
-                    [ Material.Options.styled
-                        Html.span
-                        [ Material.Typography.body2 ]
-                        [ text currentSession.connection.database ]
-                    ]
-                , Html.div [ styles [ Css.displayFlex, Css.alignItems (Css.center) ] ]
-                    [ Html.div
-                        [ styles
-                            [ Css.flex (Css.int 1)
-                            , Css.color (Css.hex "#ffffff")
-                            ]
-                        ]
-                        [ Material.Options.styled
-                            Html.span
-                            [ Material.Typography.body1 ]
-                            [ text
-                                (currentSession.connection.host
-                                    ++ ":"
-                                    ++ (currentSession.connection.portNumber |> toString)
-                                )
-                            ]
-                        ]
-                    , Html.div
-                        [ styles
-                            [ Css.color (Css.hex "#ffffff")
-                            ]
-                        ]
-                        [ Material.Button.render Mdl
-                            []
-                            model.mdl
-                            [ Material.Button.icon
-                            ]
-                            [ fontIcon { iconName = "keyboard_arrow_down", iconType = MaterialIcon } ]
-                        ]
-                    ]
-                ]
-    in
-        div
-            [ styles
-                [ Css.backgroundColor (Css.rgb 96 125 139)
-                , Css.backgroundSize Css.cover
-                ]
-            ]
-            [ div [ styles [ Css.padding (Css.px 16), Css.paddingTop (Css.px 32) ] ]
-                [ div
-                    [ styles
-                        [ Css.borderRadius (Css.px 50)
-                        , Css.backgroundColor (Css.hex "#ffffff")
-                        , Css.width (Css.px 56)
-                        , Css.height (Css.px 56)
-                        , Css.displayFlex
-                        , Css.justifyContent (Css.center)
-                        , Css.alignItems (Css.center)
-                        ]
-                    ]
-                    [ fontIcon { iconName = "server", iconType = CustomMaterialIcon } ]
-                ]
-            , titleRow
-            ]
-
-
-drawer : Model -> List (Html Msg)
-drawer model =
-    [ div
-        []
-        [ (Maybe.map (\currentSession -> drawerHeader currentSession model) model.currentSession
-            |> Maybe.withDefault (div [] [])
-          )
-        , div
-            [ styles
-                [ Css.displayFlex
-                , Css.flex (Css.int 1)
-                , Css.flexDirection (Css.column)
-                ]
-            ]
-            [ drawerItem
-                { iconName = "server"
-                , iconType = CustomMaterialIcon
-                }
-                "Active connections"
-            , drawerItem
-                { iconName = "server-off"
-                , iconType = CustomMaterialIcon
-                }
-                "Inactive connections"
-            ]
-        ]
-    ]
-
-
 view : Model -> Html Msg
 view model =
     let
@@ -876,7 +771,33 @@ view model =
             [ Layout.render Mdl
                 model.mdl
                 [ Layout.fixedHeader, Layout.seamed, Layout.fixedDrawer ]
-                { header = header model, drawer = drawer model, main = mainView model children, tabs = ( [], [] ) }
+                { header = header model
+                , drawer =
+                    []
+                    -- (Maybe.map
+                    --     (\currentSession ->
+                    --         ((Drawer.drawer (text currentSession.connection.database)
+                    --             (text
+                    --                 (currentSession.connection.host
+                    --                     ++ ":"
+                    --                     ++ (currentSession.connection.portNumber |> toString)
+                    --                 )
+                    --             )
+                    --             model.drawerModel
+                    --          )
+                    --             |> List.map
+                    --                 (\l ->
+                    --                     Html.map (\h -> DrawerMsg h) l
+                    --                 )
+                    --         )
+                    --     )
+                    --     model.currentSession
+                    --     |> Maybe.withDefault ([])
+                    -- )
+                , main = mainView model children
+                , tabs = ( [], [] )
+                }
+            , Polymer.appDrawer [ Html.Attributes.attribute "opened" "true" ] []
             ]
 
 
