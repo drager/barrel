@@ -41,3 +41,8 @@ itemBody =
 iconItem : List (Html.Attribute msg) -> List (Html msg) -> Html msg
 iconItem =
     paper "icon-item"
+
+
+dialog : List (Html.Attribute msg) -> List (Html msg) -> Html msg
+dialog =
+    paper "dialog"

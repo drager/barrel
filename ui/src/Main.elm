@@ -1,14 +1,13 @@
 module Main exposing (..)
 
 import Html exposing (Html, text, div, img, h1)
-import Html.Attributes
+import Html.Attributes exposing (attribute, id)
+import Html.Events exposing (onClick)
 import Form exposing (Form)
 import Form.Error
 import Form.Field as Field exposing (Field)
 import Form.Validate as Validate exposing (field, map5, Validation)
 import Material
-import Material.Dialog
-import Material.Typography
 import Material.Button as Button
 import Material.Button
 import Material.Textfield
@@ -25,7 +24,8 @@ import Json.Encode as Encode
 import Ports exposing (..)
 import Utils exposing (..)
 import Drawer
-import Polymer
+import WebComponents.AppLayout as AppLayout
+import WebComponents.Paper as Paper
 
 
 -- type alias Connection = { host : String, username : String }
@@ -572,16 +572,15 @@ header model =
     ]
 
 
-mainView : Model -> List (Html Msg) -> List (Html Msg)
+mainView : Model -> List (Html Msg) -> Html Msg
 mainView model children =
-    [ div
+    div
         [ styles
             [ Css.color (Css.hex "#000000")
             , Css.displayFlex
             ]
         ]
         children
-    ]
 
 
 listDatabasesView : Model -> Html Msg
@@ -637,23 +636,14 @@ sessionListView model dbSessions =
 
 connectionDialog : Model -> Html Msg
 connectionDialog model =
-    Material.Dialog.view
-        []
-        [ Material.Dialog.title [] [ text "Reconnect" ]
-        , Material.Dialog.content []
-            [ connectionFormView model ]
-        , Material.Dialog.actions []
-            [ Button.render Mdl
-                [ 0 ]
-                model.mdl
-                [ Material.Dialog.closeOn "click" ]
-                [ text "Reconnect" ]
-            , Button.render Mdl
-                [ 1 ]
-                model.mdl
-                [ Material.Dialog.closeOn "click" ]
-                [ text "Cancel" ]
-            ]
+    Paper.dialog
+        [ id "reconnect_dialog"
+        , attribute "entry-animation" "scale-up-animation"
+        , attribute "exit-animation" "fade-out-animation"
+        , attribute "with-backdrop" "true"
+        ]
+        [ Html.h3 [] [ text "Reconnect" ]
+        , connectionFormView model
         ]
 
 
@@ -663,16 +653,15 @@ getFailedMaybe failedSessionMaybe =
         |> Maybe.andThen (.retryFailed)
 
 
-reconnectionView : Maybe Connection -> List (Material.Options.Property c Msg)
+reconnectionView : Maybe Connection -> List (Html.Attribute Msg)
 reconnectionView failedSessionMaybe =
     getFailedMaybe failedSessionMaybe
         |> Maybe.andThen
             (\_ ->
                 (Maybe.map
                     (\failed ->
-                        ([ Material.Options.onClick (SetReconnectionForm failed)
-                         , Material.Dialog.openOn
-                            "click"
+                        ([ onClick (SetReconnectionForm failed)
+                         , attribute "onclick" "reconnect_dialog.open()"
                          ]
                         )
                     )
@@ -682,55 +671,55 @@ reconnectionView failedSessionMaybe =
         |> Maybe.withDefault []
 
 
-sessionListItemView : Model -> { sessionId : SessionId, connection : Connection } -> Bool -> Int -> Html Msg
+sessionListItemView :
+    Model
+    -> { sessionId : SessionId, connection : Connection }
+    -> Bool
+    -> Int
+    -> Html Msg
 sessionListItemView model { sessionId, connection } active index =
     let
         failedSessionMaybe =
             Dict.get sessionId model.inActiveDbSessions
     in
-        Material.List.li [ Material.List.withSubtitle ]
-            [ Material.List.content []
-                [ text connection.database
-                , Material.List.subtitle
-                    []
-                    [ text (connection.host ++ ":" ++ (connection.portNumber |> toString)) ]
-                ]
-            , if not active then
-                Material.List.content2 []
-                    [ Button.render Mdl
-                        [ index ]
-                        model.mdl
-                        (List.append
-                            [ Button.raised
-                            , Button.primary
-                            , Button.ripple
-                            ]
-                            (reconnectionView
-                                failedSessionMaybe
-                            )
-                        )
-                        [ text "Reconnect" ]
-                    , case
-                        getFailedMaybe failedSessionMaybe
-                      of
-                        Just _ ->
-                            connectionDialog model
-
-                        Nothing ->
-                            div [] []
+        div []
+            [ Paper.item []
+                [ Paper.itemBody [ attribute "two-line" "true" ]
+                    [ div [] [ text connection.database ]
+                    , div
+                        [ attribute "secondary" "true"
+                        ]
+                        [ text (connection.host ++ ":" ++ (connection.portNumber |> toString)) ]
                     ]
-              else
-                Material.List.content2 []
-                    [ Button.render Mdl
-                        [ 0 ]
-                        model.mdl
-                        [ Button.raised
-                        , Button.primary
-                        , Button.ripple
-                        , Material.Options.onClick (Disconnect sessionId)
+                , if not active then
+                    div []
+                        [ Paper.button
+                            (List.append
+                                [ attribute "raised" "true"
+                                , attribute "primary" "true"
+                                ]
+                                (reconnectionView
+                                    failedSessionMaybe
+                                )
+                            )
+                            [ text "Reconnect"
+                            ]
+                          -- , case
+                          --     getFailedMaybe failedSessionMaybe
+                          --   of
+                          --     Just _ ->
+                          --         connectionDialog model
+                          --     Nothing ->
+                          --         div [] []
+                        ]
+                  else
+                    Paper.button
+                        [ attribute "raised" "true"
+                        , attribute "primary" "true"
+                        , onClick (Disconnect sessionId)
                         ]
                         [ text "Disconnect" ]
-                    ]
+                ]
             ]
 
 
@@ -768,36 +757,72 @@ view model =
             ]
     in
         div []
-            [ Layout.render Mdl
-                model.mdl
-                [ Layout.fixedHeader, Layout.seamed, Layout.fixedDrawer ]
-                { header = header model
-                , drawer =
-                    []
-                    -- (Maybe.map
-                    --     (\currentSession ->
-                    --         ((Drawer.drawer (text currentSession.connection.database)
-                    --             (text
-                    --                 (currentSession.connection.host
-                    --                     ++ ":"
-                    --                     ++ (currentSession.connection.portNumber |> toString)
-                    --                 )
-                    --             )
-                    --             model.drawerModel
-                    --          )
-                    --             |> List.map
-                    --                 (\l ->
-                    --                     Html.map (\h -> DrawerMsg h) l
-                    --                 )
-                    --         )
-                    --     )
-                    --     model.currentSession
-                    --     |> Maybe.withDefault ([])
-                    -- )
-                , main = mainView model children
-                , tabs = ( [], [] )
-                }
-            , Polymer.appDrawer [ Html.Attributes.attribute "opened" "true" ] []
+            [ -- Layout.render Mdl
+              -- model.mdl
+              -- [ Layout.fixedHeader, Layout.seamed, Layout.fixedDrawer ]
+              -- { header = header model
+              -- , drawer =
+              --     []
+              --     -- (Maybe.map
+              --     --     (\currentSession ->
+              --     --         ((Drawer.drawer (text currentSession.connection.database)
+              --     --             (text
+              --     --                 (currentSession.connection.host
+              --     --                     ++ ":"
+              --     --                     ++ (currentSession.connection.portNumber |> toString)
+              --     --                 )
+              --     --             )
+              --     --             model.drawerModel
+              --     --          )
+              --     --             |> List.map
+              --     --                 (\l ->
+              --     --                     Html.map (\h -> DrawerMsg h) l
+              --     --                 )
+              --     --         )
+              --     --     )
+              --     --     model.currentSession
+              --     --     |> Maybe.withDefault ([])
+              --     -- )
+              -- , main = mainView model children
+              -- , tabs = ( [], [] )
+              -- }
+              AppLayout.drawerLayout []
+                [ AppLayout.drawer [ attribute "slot" "drawer" ]
+                    [ Paper.drawer []
+                        [ Paper.drawerTitle
+                            [ attribute "name" "HEJ"
+                            , attribute "email" "test"
+                            ]
+                            [ text "ASDASD" ]
+                        ]
+                    ]
+                , AppLayout.headerLayout []
+                    [ AppLayout.header
+                        [ attribute "shadow" "true"
+                        ]
+                        [ AppLayout.toolbar
+                            [ styles
+                                [ Css.color (Css.hex "#FFFFFF")
+                                ]
+                            ]
+                            [ Paper.iconButton
+                                [ attribute "icon" "menu"
+                                , attribute "drawer-toggle" "true"
+                                , styles [ Css.color (Css.hex "#000000") ]
+                                ]
+                                []
+                            , Html.div [ attribute "main-title" "true" ] [ text "Title" ]
+                            ]
+                        ]
+                    , mainView model children
+                    ]
+                , Paper.button
+                    [ attribute "raised" "true"
+                    , attribute "primary" "true"
+                    ]
+                    [ text "Click" ]
+                , connectionDialog model
+                ]
             ]
 
 
