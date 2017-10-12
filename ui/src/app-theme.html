@@ -1,0 +1,28 @@
+<style is="custom-style">
+   :root {
+    /*
+     * You can use these generic variables in your elements for easy theming.
+     * For example, if all your elements use `--primary-text-color` as its main
+     * color, then switching from a light to a dark theme is just a matter of
+     * changing the value of `--primary-text-color` in your application.
+     */
+    --primary-text-color: var(--light-theme-text-color);
+    --primary-background-color: var(--light-theme-background-color);
+    --secondary-text-color: var(--light-theme-secondary-color);
+    --disabled-text-color: var(--light-theme-disabled-color);
+    --divider-color: var(--light-theme-divider-color);
+
+    --primary-color: var(--paper-blue-grey-500);
+  }
+
+  app-header {
+    background: var(--default-primary-color);
+    color: var(--text-primary-color);
+    @apply --paper-font-display1;
+  }
+
+  paper-button {
+    background-color: var(--default-primary-color);
+    color: white;
+  }
+</style>

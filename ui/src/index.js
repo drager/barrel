@@ -1,5 +1,24 @@
 import './main.css';
-import { Main } from './Main.elm';
+import 'app-layout/app-drawer-layout/app-drawer-layout.html'
+import 'app-layout/app-drawer/app-drawer.html'
+import 'app-layout/app-scroll-effects/app-scroll-effects.html'
+import 'app-layout/app-header/app-header.html'
+import 'app-layout/app-header-layout/app-header-layout.html'
+import 'app-layout/app-toolbar/app-toolbar.html'
+import 'paper-button/paper-button.html'
+import 'paper-icon-button/paper-icon-button.html'
+import 'paper-drawer/paper-drawer.html'
+import 'paper-drawer/paper-drawer-title.html'
+import 'paper-drawer/paper-drawer-subheader.html'
+import 'paper-drawer/paper-drawer-icon-item.html'
+import 'paper-drawer/paper-drawer-divider.html'
+import 'paper-drawer/paper-drawer-item.html'
+import 'paper-item/paper-item.html'
+import 'paper-item/paper-icon-item.html'
+import 'paper-item/paper-item-body.html'
+import './app-theme.html';
+import 'paper-styles/color.html'
+import { Main } from './Main.elm'
 
 var app = Main.embed(document.getElementById('app'));
 
