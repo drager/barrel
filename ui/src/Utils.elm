@@ -1,7 +1,7 @@
 module Utils exposing (..)
 
 import Html exposing (Html)
-import Html.Attributes exposing (attribute, type_, defaultValue)
+import Html.Attributes exposing (attribute, type_, value)
 import Html.Events exposing (onInput, onFocus, onBlur)
 import Form exposing (Form)
 import Form.Field
@@ -21,7 +21,7 @@ paperBaseInput t toFieldValue inputType state attrs =
     let
         formAttrs =
             [ type_ t
-            , defaultValue (state.value |> Maybe.withDefault "")
+            , value (state.value |> Maybe.withDefault "")
             , onInput (toFieldValue >> (Input state.path inputType))
             , onFocus (Form.Focus state.path)
             , onBlur (Form.Blur state.path)
