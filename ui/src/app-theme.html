@@ -1,5 +1,5 @@
 <style is="custom-style">
-   :root {
+  :root {
     /*
      * You can use these generic variables in your elements for easy theming.
      * For example, if all your elements use `--primary-text-color` as its main
@@ -21,7 +21,7 @@
     @apply --paper-font-display1;
   }
 
-  paper-button {
+  paper-button:not([disabled]) {
     background-color: var(--default-primary-color);
     color: white;
     font-weight: 500;
