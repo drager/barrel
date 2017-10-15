@@ -704,6 +704,31 @@ sessionListItemView model { sessionId, connection } active index =
             ]
 
 
+leftDrawer : Model -> CurrentSession -> Html Msg
+leftDrawer model currentSession =
+    AppLayout.drawer [ attribute "slot" "drawer" ]
+        (Maybe.map
+            (\currentSession ->
+                ((Drawer.drawer (text currentSession.connection.database)
+                    (text
+                        (currentSession.connection.host
+                            ++ ":"
+                            ++ (currentSession.connection.portNumber |> toString)
+                        )
+                    )
+                    model.drawerModel
+                 )
+                    |> List.map
+                        (\l ->
+                            Html.map (\h -> DrawerMsg h) l
+                        )
+                )
+            )
+            model.currentSession
+            |> Maybe.withDefault ([])
+        )
+
+
 view : Model -> Html Msg
 view model =
     let
@@ -738,57 +763,9 @@ view model =
             ]
     in
         div []
-            [ -- Layout.render Mdl
-              -- model.mdl
-              -- [ Layout.fixedHeader, Layout.seamed, Layout.fixedDrawer ]
-              -- { header = header model
-              -- , drawer =
-              --     []
-              --     -- (Maybe.map
-              --     --     (\currentSession ->
-              --     --         ((Drawer.drawer (text currentSession.connection.database)
-              --     --             (text
-              --     --                 (currentSession.connection.host
-              --     --                     ++ ":"
-              --     --                     ++ (currentSession.connection.portNumber |> toString)
-              --     --                 )
-              --     --             )
-              --     --             model.drawerModel
-              --     --          )
-              --     --             |> List.map
-              --     --                 (\l ->
-              --     --                     Html.map (\h -> DrawerMsg h) l
-              --     --                 )
-              --     --         )
-              --     --     )
-              --     --     model.currentSession
-              --     --     |> Maybe.withDefault ([])
-              --     -- )
-              -- , main = mainView model children
-              -- , tabs = ( [], [] )
-              -- }
-              AppLayout.drawerLayout []
-                [ AppLayout.drawer [ attribute "slot" "drawer" ]
-                    (Maybe.map
-                        (\currentSession ->
-                            ((Drawer.drawer (text currentSession.connection.database)
-                                (text
-                                    (currentSession.connection.host
-                                        ++ ":"
-                                        ++ (currentSession.connection.portNumber |> toString)
-                                    )
-                                )
-                                model.drawerModel
-                             )
-                                |> List.map
-                                    (\l ->
-                                        Html.map (\h -> DrawerMsg h) l
-                                    )
-                            )
-                        )
-                        model.currentSession
-                        |> Maybe.withDefault ([])
-                    )
+            [ AppLayout.drawerLayout []
+                [ (Maybe.map (\currentSession -> leftDrawer model currentSession) model.currentSession)
+                    |> Maybe.withDefault (div [] [])
                 , AppLayout.headerLayout []
                     [ header model
                     , mainView model children
