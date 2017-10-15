@@ -2,8 +2,8 @@ module Styles exposing (..)
 
 import Css exposing (asPairs, px)
 import Html exposing (Html, Attribute, div)
-import Html.Attributes
-import Material.Icon
+import Html.Attributes exposing (attribute)
+import WebComponents.Iron as Iron
 
 
 styles : List Css.Style -> Attribute msg
@@ -35,7 +35,7 @@ fontIcon : Icon -> Html msg
 fontIcon { iconType, iconName } =
     case iconType of
         MaterialIcon ->
-            Material.Icon.view iconName []
+            Iron.icon [ attribute "icon" iconName ] []
 
         CustomMaterialIcon ->
             customFontIcon iconName

@@ -2,19 +2,11 @@ module Main exposing (..)
 
 import Html exposing (Html, text, div, img, h1)
 import Html.Attributes exposing (attribute, id)
-import Html.Events exposing (onClick)
+import Html.Events exposing (onClick, onSubmit)
 import Form exposing (Form)
 import Form.Error
 import Form.Field as Field exposing (Field)
 import Form.Validate as Validate exposing (field, map5, Validation)
-import Material
-import Material.Button as Button
-import Material.Button
-import Material.Textfield
-import Material.Card as Card
-import Material.Layout as Layout
-import Material.Options
-import Material.List
 import Styles exposing (..)
 import Css
 import Http
@@ -22,7 +14,7 @@ import Dict exposing (Dict)
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Ports exposing (..)
-import Utils exposing (..)
+import Utils
 import Drawer
 import WebComponents.AppLayout as AppLayout
 import WebComponents.Paper as Paper
@@ -53,10 +45,6 @@ type alias ActiveDbSessions =
     DbSessions
 
 
-type alias Mdl =
-    Material.Model
-
-
 type alias CurrentSession =
     { sessionId : SessionId
     , connection : Connection
@@ -83,7 +71,6 @@ type alias ConnectionForm =
 
 type alias Model =
     { form : Form () ConnectionForm
-    , mdl : Material.Model
     , activeDbSessions : ActiveDbSessions
     , inActiveDbSessions : InactiveDbSessions
     , databases : List Database
@@ -105,7 +92,6 @@ type alias SessionId =
 
 type Msg
     = FormMsg Form.Msg
-    | Mdl (Material.Msg Msg)
     | ReceiveFromLocalStorage ( String, Decode.Value )
     | ReceiveFromSessionStorage ( String, Decode.Value )
     | ConnectToDatabase Connection (Result Http.Error SessionId)
@@ -169,7 +155,8 @@ connectionEncoder connection =
             , ( "port", Encode.int connection.portNumber )
             , ( "username", Encode.string connection.username )
             , ( "database", Encode.string connection.database )
-              -- , ( "retryFailed", Encode.bool connection.retryFailed )
+
+            -- , ( "retryFailed", Encode.bool connection.retryFailed )
             ]
     in
         Encode.object attributes
@@ -252,7 +239,6 @@ init =
             Drawer.init
     in
         ( { form = Form.initial [] validation
-          , mdl = Material.model
           , activeDbSessions = Dict.empty
           , inActiveDbSessions = Dict.empty
           , databases = []
@@ -305,9 +291,6 @@ update msg model =
 
                 _ ->
                     ( { model | form = Form.update validation formMsg model.form }, Cmd.none )
-
-        Mdl msg_ ->
-            Material.update Mdl msg_ model
 
         ConnectToDatabase connectionInfo (Ok sessionId) ->
             ( { model
@@ -417,8 +400,7 @@ update msg model =
                                 |> Dict.keys
                                 |> List.map getDatabases
                                 -- |> List.append [ Ports.getItemInLocalStorage storageKey ]
-                                |>
-                                    Cmd.batch
+                                |> Cmd.batch
                             )
                     in
                         (Maybe.map2
@@ -453,29 +435,30 @@ update msg model =
                 ( { model | drawerModel = updatedDrawerModel }, Cmd.map DrawerMsg drawerCmd )
 
 
-formField :
-    Model
-    -> { b | value : Maybe String, path : String }
-    -> String
-    -> Material.Textfield.Property Msg
-    -> String
-    -> Html Msg
-formField model fieldObject label fieldType error =
-    Material.Textfield.render
-        Mdl
-        [ 0 ]
-        model.mdl
-        [ Material.Textfield.label label
-        , Material.Textfield.floatingLabel
-        , fieldType
-        , Material.Textfield.value <| Maybe.withDefault "" fieldObject.value
-        , onMaterialInput FormMsg fieldObject.path
-        , onMaterialFocus FormMsg fieldObject.path
-        , onMaterialBlur FormMsg fieldObject.path
-        , Material.Textfield.error (error)
-            |> Material.Options.when (not <| String.isEmpty error)
-        ]
-        []
+
+-- formField :
+--     Model
+--     -> { b | value : Maybe String, path : String }
+--     -> String
+--     -> Material.Textfield.Property Msg
+--     -> String
+--     -> Html Msg
+-- formField model fieldObject label fieldType error =
+--     Material.Textfield.render
+--         Mdl
+--         [ 0 ]
+--         model.mdl
+--         [ Material.Textfield.label label
+--         , Material.Textfield.floatingLabel
+--         , fieldType
+--         , Material.Textfield.value <| Maybe.withDefault "" fieldObject.value
+--         , onMaterialInput FormMsg fieldObject.path
+--         , onMaterialFocus FormMsg fieldObject.path
+--         , onMaterialBlur FormMsg fieldObject.path
+--         , Material.Textfield.error (error)
+--             |> Material.Options.when (not <| String.isEmpty error)
+--         ]
+--         []
 
 
 initialFields : Connection -> List ( String, Field )
@@ -487,7 +470,11 @@ initialFields connectionInfo =
     ]
 
 
-connectionFormView : Model -> Html Msg
+
+-- TODO: Handle connection failures
+
+
+connectionFormView : Model -> Html Form.Msg
 connectionFormView model =
     let
         -- error presenter
@@ -513,10 +500,6 @@ connectionFormView model =
         form =
             model.form
 
-        cardBlock =
-            \content ->
-                Card.text [] content
-
         -- fields states
         host =
             Form.getFieldAsString "host" form
@@ -534,42 +517,84 @@ connectionFormView model =
             Form.getFieldAsString "database" form
 
         buttonAttributes =
-            [ Button.raised
-            , Button.primary
-            , Button.ripple
-            , onSubmit FormMsg
+            [ attribute "raised" "true"
+            , attribute "primary" "true"
+            , onClick Form.Submit
             ]
     in
-        Card.view []
-            [ cardBlock
-                [ formField model host "Host" Material.Textfield.text_ (errorFor host)
-                , formField model portNumber "Port" Material.Textfield.text_ (errorFor portNumber)
-                , formField model username "Username" Material.Textfield.text_ (errorFor username)
-                , formField model password "Password" Material.Textfield.password (errorFor password)
-                , formField model database "Database" Material.Textfield.text_ (errorFor database)
-                , errorFor username |> text
-                ]
-            , Card.actions []
-                [ Button.render Mdl
-                    [ 5 ]
-                    model.mdl
-                    (if not (List.isEmpty (Form.getErrors form)) then
-                        List.append [ Button.disabled ] buttonAttributes
-                     else
+        div []
+            [ Utils.paperTextInput host
+                ([ attribute "label" "Hostname" ]
+                    ++ Utils.inputError (errorFor host)
+                )
+            , Utils.paperNumberInput portNumber
+                ([ attribute "label" "Port" ]
+                    ++ Utils.inputError (errorFor portNumber)
+                )
+            , Utils.paperTextInput username
+                ([ attribute "label" "Username" ]
+                    ++ Utils.inputError (errorFor username)
+                )
+            , Utils.paperPasswordInput password
+                ([ attribute "label" "Password" ]
+                    ++ Utils.inputError (errorFor password)
+                )
+            , Utils.paperTextInput database
+                ([ attribute "label" "Database" ]
+                    ++ Utils.inputError (errorFor database)
+                )
+            , Paper.button
+                (if not (List.isEmpty (Form.getErrors form)) then
+                    (List.append
                         buttonAttributes
+                        [ (attribute
+                            "disabled"
+                            "true"
+                          )
+                        ]
                     )
-                    [ text "Connect" ]
-                ]
+                 else
+                    buttonAttributes
+                )
+                [ text "Connect" ]
+
+            -- []
+            --     formField
+            --     model
+            --     host
+            --     "Host"
+            --     Material.Textfield.text_
+            --     (errorFor host)
+            -- , formField model portNumber "Port" Material.Textfield.text_ (errorFor portNumber)
+            -- , formField model username "Username" Material.Textfield.text_ (errorFor username)
+            -- , formField model password "Password" Material.Textfield.password (errorFor password)
+            -- , formField model database "Database" Material.Textfield.text_ (errorFor database)
+            -- , errorFor username |> text
             ]
 
 
-header : Model -> List (Html Msg)
+header : Model -> Html msg
 header model =
-    [ Layout.row
-        []
-        [ Layout.title [] [ text "Database manager" ]
+    AppLayout.header
+        [ attribute "shadow" "true"
         ]
-    ]
+        [ AppLayout.toolbar
+            [ styles
+                [ Css.color (Css.hex "#FFFFFF")
+                ]
+            ]
+            [ Paper.iconButton
+                [ attribute "icon" "menu"
+                , attribute "drawer-toggle" "true"
+                ]
+                []
+            , Html.div
+                [ styles [ Css.paddingLeft (Css.px 16) ]
+                , attribute "main-title" "true"
+                ]
+                [ text "Database manager" ]
+            ]
+        ]
 
 
 mainView : Model -> List (Html Msg) -> Html Msg
@@ -585,23 +610,19 @@ mainView model children =
 
 listDatabasesView : Model -> Html Msg
 listDatabasesView model =
-    div []
-        [ Material.List.ul []
-            (List.map databaseListItemView model.databases)
-        ]
+    div [ styles [ Css.flex (Css.int 1) ], attribute "role" "listbox" ]
+        (List.map databaseListItemView model.databases)
 
 
 databaseListItemView : Database -> Html Msg
 databaseListItemView database =
-    Material.List.li [ Material.List.withSubtitle ]
-        [ Material.List.content []
-            [ text database.name
-            , Material.List.subtitle
-                []
-                [ text ("Oid: " ++ (database.oid |> toString))
-                , text " - "
-                , (Maybe.map text database.sessionId) |> Maybe.withDefault ("" |> text)
+    Paper.item []
+        [ Paper.itemBody [ attribute "two-line" "true" ]
+            [ div [] [ text database.name ]
+            , div
+                [ attribute "secondary" "true"
                 ]
+                [ text ("Oid: " ++ (database.oid |> toString)), text " - ", (Maybe.map text database.sessionId) |> Maybe.withDefault ("" |> text) ]
             ]
         ]
 
@@ -617,24 +638,22 @@ isSessionActive sessionId activeDbSessions =
 
 sessionListView : Model -> DbSessions -> Html Msg
 sessionListView model dbSessions =
-    div [ styles [ Css.flex (Css.int 1) ] ]
-        [ Material.List.ul []
-            (Dict.toList
-                dbSessions
-                |> List.indexedMap
-                    (\index ( key, value ) ->
-                        sessionListItemView model
-                            { sessionId = key
-                            , connection = value
-                            }
-                            (isSessionActive key model.activeDbSessions)
-                            index
-                    )
-            )
-        ]
+    div [ styles [ Css.flex (Css.int 1) ], attribute "role" "listbox" ]
+        (Dict.toList
+            dbSessions
+            |> List.indexedMap
+                (\index ( key, value ) ->
+                    sessionListItemView model
+                        { sessionId = key
+                        , connection = value
+                        }
+                        (isSessionActive key model.activeDbSessions)
+                        index
+                )
+        )
 
 
-connectionDialog : Model -> Html Msg
+connectionDialog : Model -> Html Form.Msg
 connectionDialog model =
     Paper.dialog
         [ id "reconnect_dialog"
@@ -704,13 +723,14 @@ sessionListItemView model { sessionId, connection } active index =
                             )
                             [ text "Reconnect"
                             ]
-                          -- , case
-                          --     getFailedMaybe failedSessionMaybe
-                          --   of
-                          --     Just _ ->
-                          --         connectionDialog model
-                          --     Nothing ->
-                          --         div [] []
+
+                        -- , case
+                        --     getFailedMaybe failedSessionMaybe
+                        --   of
+                        --     Just _ ->
+                        --         connectionDialog model
+                        --     Nothing ->
+                        --         div [] []
                         ]
                   else
                     Paper.button
@@ -734,14 +754,14 @@ view model =
                             |> sessionListView model
                         , model.inActiveDbSessions
                             |> sessionListView model
-                        , listDatabasesView model
-                        , connectionFormView model
+                        , div [] [ (Html.h1 [] [ (text "Databases") ]), listDatabasesView model ]
+                        , Html.map FormMsg (connectionFormView model)
                         ]
                   else if not (Dict.isEmpty model.inActiveDbSessions) then
                     div []
                         [ model.inActiveDbSessions
                             |> sessionListView model
-                        , connectionFormView model
+                        , Html.map FormMsg (connectionFormView model)
                         ]
                   else
                     div
@@ -752,7 +772,7 @@ view model =
                             , Css.flex (Css.int 1)
                             ]
                         ]
-                        [ connectionFormView model ]
+                        [ Html.map FormMsg (connectionFormView model) ]
                 ]
             ]
     in
@@ -788,40 +808,31 @@ view model =
               -- }
               AppLayout.drawerLayout []
                 [ AppLayout.drawer [ attribute "slot" "drawer" ]
-                    [ Paper.drawer []
-                        [ Paper.drawerTitle
-                            [ attribute "name" "HEJ"
-                            , attribute "email" "test"
-                            ]
-                            [ text "ASDASD" ]
-                        ]
-                    ]
+                    (Maybe.map
+                        (\currentSession ->
+                            ((Drawer.drawer (text currentSession.connection.database)
+                                (text
+                                    (currentSession.connection.host
+                                        ++ ":"
+                                        ++ (currentSession.connection.portNumber |> toString)
+                                    )
+                                )
+                                model.drawerModel
+                             )
+                                |> List.map
+                                    (\l ->
+                                        Html.map (\h -> DrawerMsg h) l
+                                    )
+                            )
+                        )
+                        model.currentSession
+                        |> Maybe.withDefault ([])
+                    )
                 , AppLayout.headerLayout []
-                    [ AppLayout.header
-                        [ attribute "shadow" "true"
-                        ]
-                        [ AppLayout.toolbar
-                            [ styles
-                                [ Css.color (Css.hex "#FFFFFF")
-                                ]
-                            ]
-                            [ Paper.iconButton
-                                [ attribute "icon" "menu"
-                                , attribute "drawer-toggle" "true"
-                                , styles [ Css.color (Css.hex "#000000") ]
-                                ]
-                                []
-                            , Html.div [ attribute "main-title" "true" ] [ text "Title" ]
-                            ]
-                        ]
+                    [ header model
                     , mainView model children
                     ]
-                , Paper.button
-                    [ attribute "raised" "true"
-                    , attribute "primary" "true"
-                    ]
-                    [ text "Click" ]
-                , connectionDialog model
+                , Html.map FormMsg (connectionDialog model)
                 ]
             ]
 

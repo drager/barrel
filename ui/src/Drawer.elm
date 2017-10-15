@@ -1,17 +1,15 @@
 module Drawer exposing (..)
 
 import Html exposing (Html)
+import Html.Attributes exposing (attribute)
+import Html.Events exposing (onClick)
 import Styles exposing (styles)
-import Material
-import Material.Typography
-import Material.Options
-import Material.Button
 import Css
+import WebComponents.Paper as Paper
 
 
 type Msg
-    = Mdl (Material.Msg Msg)
-    | OpenDrawer
+    = OpenDrawer
     | CloseDrawer
 
 
@@ -21,20 +19,17 @@ type DrawerState
 
 
 type alias Model =
-    { drawerState : DrawerState, mdl : Material.Model }
+    { drawerState : DrawerState }
 
 
 init : ( Model, Cmd Msg )
 init =
-    ( { drawerState = DrawerClosed, mdl = Material.model }, Cmd.none )
+    ( { drawerState = DrawerClosed }, Cmd.none )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        Mdl msg_ ->
-            Material.update Mdl msg_ model
-
         OpenDrawer ->
             ( { model | drawerState = DrawerOpen }, Cmd.none )
 
@@ -54,11 +49,7 @@ drawerItem icon itemText =
         ]
         [ Html.span [ styles [ Css.color (Css.rgba 0 0 0 0.54) ] ] [ Styles.fontIcon icon ]
         , Html.span [ styles [ Css.paddingLeft (Css.px 32) ] ]
-            [ Material.Options.styled
-                Html.span
-                [ Material.Typography.body2 ]
-                [ Html.text itemText ]
-            ]
+            [ Html.text itemText ]
         ]
 
 
@@ -73,47 +64,41 @@ drawerHeader title subTitle model =
                     , Css.paddingBottom (Css.px 16)
                     ]
                 ]
-                [ Html.span [ styles [ Css.color (Css.hex "#ffffff") ] ]
-                    [ Material.Options.styled
-                        Html.span
-                        [ Material.Typography.body2 ]
-                        [ title ]
+                [ Html.span
+                    [ styles
+                        ([ Css.color (Css.hex "#ffffff") ]
+                            ++ Styles.ellipsis
+                        )
                     ]
+                    [ title ]
                 , Html.div [ styles [ Css.displayFlex, Css.alignItems (Css.center) ] ]
                     [ Html.div
                         [ styles
-                            [ Css.flex (Css.int 1)
-                            , Css.color (Css.hex "#ffffff")
-                            ]
+                            ([ Css.flex (Css.int 1)
+                             , Css.color (Css.hex "#ffffff")
+                             ]
+                                ++ Styles.ellipsis
+                            )
                         ]
-                        [ Material.Options.styled
-                            Html.span
-                            [ Material.Typography.body1 ]
-                            [ subTitle ]
-                        ]
+                        [ subTitle ]
                     , Html.div
                         [ styles
                             [ Css.color (Css.hex "#ffffff")
                             ]
                         ]
-                        [ Material.Button.render Mdl
-                            [ 0 ]
-                            model.mdl
-                            [ Material.Button.icon
-                            , Material.Options.onClick OpenDrawer
-                            ]
-                            [ Styles.fontIcon
-                                { iconName =
-                                    (case model.drawerState of
-                                        DrawerOpen ->
-                                            "keyboard_arrow_up"
+                        [ Paper.iconButton
+                            [ onClick OpenDrawer
+                            , attribute
+                                "icon"
+                                (case model.drawerState of
+                                    DrawerOpen ->
+                                        "keyboard_arrow_up"
 
-                                        DrawerClosed ->
-                                            "keyboard_arrow_down"
-                                    )
-                                , iconType = Styles.MaterialIcon
-                                }
+                                    DrawerClosed ->
+                                        "keyboard_arrow_down"
+                                )
                             ]
+                            []
                         ]
                     ]
                 ]
