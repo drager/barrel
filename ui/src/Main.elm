@@ -355,8 +355,20 @@ update msg model =
             let
                 sessions =
                     Dict.remove sessionId model.activeDbSessions
+
+                activeSessionsCount =
+                    Dict.size model.activeDbSessions
+
+                _ =
+                    Debug.log "activeSessionsCount" activeSessionsCount
+
+                newModel =
+                    if activeSessionsCount <= 1 then
+                        { model | activeDbSessions = sessions, currentSession = Maybe.Nothing }
+                    else
+                        { model | activeDbSessions = sessions }
             in
-                ( { model | activeDbSessions = sessions }
+                ( newModel
                 , Cmd.batch
                     [ Ports.removeItemFromListInLocalStorage ( storageKey, (Encode.string sessionId) )
                     , Ports.removeItemFromListInSessionStorage ( storageKey, (Encode.string sessionId) )
@@ -622,7 +634,7 @@ connectionDialog model =
         , attribute "exit-animation" "fade-out-animation"
         , attribute "with-backdrop" "true"
         ]
-        [ Html.h3 [] [ text "Reconnect" ]
+        [ Html.h2 [] [ text "Reconnect" ]
         , connectionFormView model
         ]
 
@@ -770,8 +782,8 @@ view model =
                     [ header model
                     , mainView model children
                     ]
-                , Html.map FormMsg (connectionDialog model)
                 ]
+            , Html.map FormMsg (connectionDialog model)
             ]
 
 
