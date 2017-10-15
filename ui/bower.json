@@ -1,0 +1,25 @@
+{
+  "name": "database-manager",
+  "description": "Manage your databases",
+  "main": "main.js",
+  "authors": [
+    "Jesper Håkansson <jesper@jesperh.se>"
+  ],
+  "license": "Apache-2.0",
+  "homepage": "",
+  "private": true,
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "paper-dialog": "PolymerElements/paper-dialog#^2.0.0",
+    "paper-ui-elements": "PolymerElements/paper-ui-elements",
+    "app-layout": "PolymerElements/app-layout#^2.0.4",
+    "paper-drawer": "Collaborne/paper-drawer#^2.0.2",
+    "paper-input": "PolymerElements/paper-input#^2.0.2"
+  }
+}
