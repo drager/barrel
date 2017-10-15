@@ -46,3 +46,8 @@ iconItem =
 dialog : List (Html.Attribute msg) -> List (Html msg) -> Html msg
 dialog =
     paper "dialog"
+
+
+input : List (Html.Attribute msg) -> List (Html msg) -> Html msg
+input =
+    paper "input"
