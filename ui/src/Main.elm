@@ -435,32 +435,6 @@ update msg model =
                 ( { model | drawerModel = updatedDrawerModel }, Cmd.map DrawerMsg drawerCmd )
 
 
-
--- formField :
---     Model
---     -> { b | value : Maybe String, path : String }
---     -> String
---     -> Material.Textfield.Property Msg
---     -> String
---     -> Html Msg
--- formField model fieldObject label fieldType error =
---     Material.Textfield.render
---         Mdl
---         [ 0 ]
---         model.mdl
---         [ Material.Textfield.label label
---         , Material.Textfield.floatingLabel
---         , fieldType
---         , Material.Textfield.value <| Maybe.withDefault "" fieldObject.value
---         , onMaterialInput FormMsg fieldObject.path
---         , onMaterialFocus FormMsg fieldObject.path
---         , onMaterialBlur FormMsg fieldObject.path
---         , Material.Textfield.error (error)
---             |> Material.Options.when (not <| String.isEmpty error)
---         ]
---         []
-
-
 initialFields : Connection -> List ( String, Field )
 initialFields connectionInfo =
     [ ( "host", Field.string connectionInfo.host )
@@ -557,19 +531,6 @@ connectionFormView model =
                     buttonAttributes
                 )
                 [ text "Connect" ]
-
-            -- []
-            --     formField
-            --     model
-            --     host
-            --     "Host"
-            --     Material.Textfield.text_
-            --     (errorFor host)
-            -- , formField model portNumber "Port" Material.Textfield.text_ (errorFor portNumber)
-            -- , formField model username "Username" Material.Textfield.text_ (errorFor username)
-            -- , formField model password "Password" Material.Textfield.password (errorFor password)
-            -- , formField model database "Database" Material.Textfield.text_ (errorFor database)
-            -- , errorFor username |> text
             ]
 
 
