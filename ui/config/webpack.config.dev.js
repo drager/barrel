@@ -7,6 +7,7 @@ const DefinePlugin = require('webpack/lib/DefinePlugin');
 const NamedModulesPlugin = require('webpack/lib/NamedModulesPlugin');
 const InterpolateHtmlPlugin = require('react-dev-utils/InterpolateHtmlPlugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const CopyWebpackPlugin = require('copy-webpack-plugin');
 const getClientEnvironment = require('./env');
 const paths = require('../config/paths');
 
@@ -176,25 +177,44 @@ module.exports = {
       {
         test: /\.html$/,
         loader: require.resolve('html-loader'),
-        include: [
-          path.resolve(__dirname, '../public/index.html'),
-        ],
+        include: [path.resolve(paths.appHtml)]
       },
 
       {
         test: /\.html$/,
         use: [
           {
-            loader: require.resolve('babel-loader'),
+            query: {
+              // Latest stable ECMAScript features
+              presets: [
+                [
+                  require.resolve('babel-preset-env'),
+                  {
+                    targets: {
+                      // React parses on ie 9, so we should too
+                      ie: 9,
+                      // We currently minify with uglify
+                      // Remove after https://github.com/mishoo/UglifyJS2/issues/448
+                      uglify: true
+                    },
+                    // Disable polyfill transforms
+                    useBuiltIns: false,
+                    // Do not transform modules to CJS
+                    modules: false
+                  }
+                ]
+              ]
+            },
+            loader: require.resolve('babel-loader')
           },
           {
-            loader: require.resolve('wc-loader'),
+            loader: require.resolve('polymer-webpack-loader'),
             options: {
-              minify: true,
-            },
+              minify: true
+            }
           }
         ],
-        exclude: [path.resolve(__dirname, '../public/index.html'),]
+        exclude: [path.resolve(paths.appHtml)]
       },
 
       // "file" loader for svg
@@ -220,7 +240,14 @@ module.exports = {
 
     new HotModuleReplacementPlugin(),
 
-    new NamedModulesPlugin()
+    new NamedModulesPlugin(),
+
+    new CopyWebpackPlugin([
+      {
+        from: path.resolve(__dirname, 'bower_components/webcomponentsjs/*.js'),
+        to: 'bower_components/webcomponentsjs/[name].[ext]'
+      }
+    ])
   ],
 
   // Some libraries import Node modules but don't use them in the browser.

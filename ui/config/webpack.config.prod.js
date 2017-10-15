@@ -10,6 +10,7 @@ const AssetsPlugin = require('assets-webpack-plugin');
 const InterpolateHtmlPlugin = require('react-dev-utils/InterpolateHtmlPlugin');
 const getClientEnvironment = require('./env');
 const paths = require('../config/paths');
+const path = require('path');
 
 // Webpack uses `publicPath` to determine where the app is being served from.
 // It requires a trailing slash, or the file assets will get an incorrect path.
@@ -58,7 +59,7 @@ module.exports = {
   },
 
   resolve: {
-    modules: ['node_modules'],
+    modules: ['node_modules', 'bower_components'],
     extensions: ['.js', '.elm']
   },
 
@@ -162,6 +163,50 @@ module.exports = {
           name: 'static/media/[name].[hash:8].[ext]'
         }
       },
+
+      {
+        test: /\.html$/,
+        loader: require.resolve('html-loader'),
+        include: [path.resolve(paths.appHtml)]
+      },
+
+      {
+        test: /\.html$/,
+        use: [
+          {
+            query: {
+              // Latest stable ECMAScript features
+              presets: [
+                [
+                  require.resolve('babel-preset-env'),
+                  {
+                    targets: {
+                      // React parses on ie 9, so we should too
+                      ie: 9,
+                      // We currently minify with uglify
+                      // Remove after https://github.com/mishoo/UglifyJS2/issues/448
+                      uglify: true
+                    },
+                    // Disable polyfill transforms
+                    useBuiltIns: false,
+                    // Do not transform modules to CJS
+                    modules: false
+                  }
+                ]
+              ]
+            },
+            loader: require.resolve('babel-loader')
+          },
+          {
+            loader: require.resolve('wc-loader'),
+            options: {
+              minify: true
+            }
+          }
+        ],
+        exclude: [path.resolve(paths.appHtml)]
+      },
+
       // "file" loader for svg
       {
         test: /\.svg$/,
