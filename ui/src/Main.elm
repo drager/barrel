@@ -108,6 +108,11 @@ storageKey =
     "dbSessions"
 
 
+connectionString : Connection -> String
+connectionString connection =
+    connection.host ++ ":" ++ (connection.portNumber |> toString)
+
+
 decodeDatabase : Decode.Decoder Database
 decodeDatabase =
     Decode.map3 Database
@@ -155,8 +160,7 @@ connectionEncoder connection =
             , ( "port", Encode.int connection.portNumber )
             , ( "username", Encode.string connection.username )
             , ( "database", Encode.string connection.database )
-
-            -- , ( "retryFailed", Encode.bool connection.retryFailed )
+              -- , ( "retryFailed", Encode.bool connection.retryFailed )
             ]
     in
         Encode.object attributes
@@ -412,7 +416,8 @@ update msg model =
                                 |> Dict.keys
                                 |> List.map getDatabases
                                 -- |> List.append [ Ports.getItemInLocalStorage storageKey ]
-                                |> Cmd.batch
+                                |>
+                                    Cmd.batch
                             )
                     in
                         (Maybe.map2
@@ -681,7 +686,7 @@ sessionListItemView model { sessionId, connection } active index =
                     , div
                         [ attribute "secondary" "true"
                         ]
-                        [ text (connection.host ++ ":" ++ (connection.portNumber |> toString)) ]
+                        [ text (connectionString connection) ]
                     ]
                 , if not active then
                     div []
@@ -696,14 +701,13 @@ sessionListItemView model { sessionId, connection } active index =
                             )
                             [ text "Reconnect"
                             ]
-
-                        -- , case
-                        --     getFailedMaybe failedSessionMaybe
-                        --   of
-                        --     Just _ ->
-                        --         connectionDialog model
-                        --     Nothing ->
-                        --         div [] []
+                          -- , case
+                          --     getFailedMaybe failedSessionMaybe
+                          --   of
+                          --     Just _ ->
+                          --         connectionDialog model
+                          --     Nothing ->
+                          --         div [] []
                         ]
                   else
                     Paper.button
@@ -716,19 +720,65 @@ sessionListItemView model { sessionId, connection } active index =
             ]
 
 
+openDrawerList : Model -> Html msg
+openDrawerList { currentSession, activeDbSessions } =
+    let
+        f : SessionId -> Connection -> Maybe (List (Html msg))
+        f sessionId connection =
+            currentSession
+                |> Maybe.map
+                    (\cs ->
+                        if not (cs.sessionId == sessionId) then
+                            [ (Drawer.drawerItem
+                                { iconName = "server"
+                                , iconType = Styles.CustomMaterialIcon
+                                }
+                                (connection.database)
+                              )
+                            , Html.span
+                                [ styles [ Css.paddingLeft (Css.px 32) ]
+                                ]
+                                [ connectionString connection |> text ]
+                            ]
+                        else
+                            []
+                    )
+    in
+        Dict.toList activeDbSessions
+            |> List.filterMap (\( sessionId, connection ) -> f sessionId connection)
+            |> List.concat
+            |> Html.div []
+
+
+closedDrawerList : Model -> Html msg
+closedDrawerList model =
+    Html.div []
+        [ Drawer.drawerItem
+            { iconName = "server"
+            , iconType = Styles.CustomMaterialIcon
+            }
+            "Active connections"
+        , Drawer.drawerItem
+            { iconName = "server-off"
+            , iconType = Styles.CustomMaterialIcon
+            }
+            "Inactive connections"
+        ]
+
+
 leftDrawer : Model -> CurrentSession -> Html Msg
 leftDrawer model currentSession =
     AppLayout.drawer [ attribute "slot" "drawer" ]
         (Maybe.map
             (\currentSession ->
-                ((Drawer.drawer (text currentSession.connection.database)
-                    (text
-                        (currentSession.connection.host
-                            ++ ":"
-                            ++ (currentSession.connection.portNumber |> toString)
-                        )
-                    )
-                    model.drawerModel
+                ((Drawer.drawer
+                    { title = (text currentSession.connection.database)
+                    , subTitle =
+                        (text (connectionString currentSession.connection))
+                    , model = model.drawerModel
+                    , openDrawerList = openDrawerList model
+                    , closedDrawerList = closedDrawerList model
+                    }
                  )
                     |> List.map
                         (\l ->
