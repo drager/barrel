@@ -7,6 +7,7 @@ import 'app-layout/app-header/app-header.html';
 import 'app-layout/app-scroll-effects/app-scroll-effects.html';
 import 'app-layout/app-toolbar/app-toolbar.html';
 import 'iron-icons/iron-icons.html';
+import 'iron-icons/hardware-icons.html';
 import 'neon-animation/neon-animations.html';
 import 'neon-animation/web-animations.html';
 import 'paper-button/paper-button.html';
@@ -74,55 +75,55 @@ function initPorts(ports) {
     setItem([key, list], storage);
   }
 
-  ports.setItemInLocalStorage.subscribe(function(keyValue) {
+  ports.setItemInLocalStorage.subscribe(function (keyValue) {
     setItem(keyValue, localStorage);
   });
 
-  ports.removeItemInLocalStorage.subscribe(function(key) {
+  ports.removeItemInLocalStorage.subscribe(function (key) {
     localStorage.removeItem(key);
   });
 
-  ports.getItemInLocalStorage.subscribe(function(key) {
+  ports.getItemInLocalStorage.subscribe(function (key) {
     const item = getItem(key, localStorage);
     console.log('LocalItem', item);
     ports.localStorageGetItemResponse.send([key, item]);
   });
 
-  ports.clearLocalStorage.subscribe(function(i) {
+  ports.clearLocalStorage.subscribe(function (i) {
     localStorage.clear();
   });
 
-  ports.pushItemInLocalStorage.subscribe(function(keyValue) {
+  ports.pushItemInLocalStorage.subscribe(function (keyValue) {
     pushItem(keyValue, localStorage);
   });
 
-  ports.removeItemFromListInLocalStorage.subscribe(function(keyValue) {
+  ports.removeItemFromListInLocalStorage.subscribe(function (keyValue) {
     removeItemInList(keyValue, localStorage);
   });
 
-  ports.setItemInSessionStorage.subscribe(function(keyValue) {
+  ports.setItemInSessionStorage.subscribe(function (keyValue) {
     setItem(keyValue, sessionStorage);
   });
 
-  ports.removeItemInSessionStorage.subscribe(function(key) {
+  ports.removeItemInSessionStorage.subscribe(function (key) {
     sessionStorage.removeItem(key);
   });
 
-  ports.getItemInSessionStorage.subscribe(function(key) {
+  ports.getItemInSessionStorage.subscribe(function (key) {
     const item = getItem(key, sessionStorage);
     console.log('SessionItem', item);
     ports.sessionStorageGetItemResponse.send([key, item]);
   });
 
-  ports.clearSessionStorage.subscribe(function(i) {
+  ports.clearSessionStorage.subscribe(function (i) {
     sessionStorage.clear();
   });
 
-  ports.pushItemInSessionStorage.subscribe(function(keyValue) {
+  ports.pushItemInSessionStorage.subscribe(function (keyValue) {
     pushItem(keyValue, sessionStorage);
   });
 
-  ports.removeItemFromListInSessionStorage.subscribe(function(keyValue) {
+  ports.removeItemFromListInSessionStorage.subscribe(function (keyValue) {
     removeItemInList(keyValue, sessionStorage);
   });
 }
