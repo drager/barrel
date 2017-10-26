@@ -9,8 +9,7 @@ import WebComponents.Paper as Paper
 
 
 type Msg
-    = OpenDrawer
-    | CloseDrawer
+    = ToggleDrawer
 
 
 type DrawerState
@@ -30,11 +29,17 @@ init =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        OpenDrawer ->
-            ( { model | drawerState = DrawerOpen }, Cmd.none )
+        ToggleDrawer ->
+            let
+                newDrawerState =
+                    case model.drawerState of
+                        DrawerOpen ->
+                            DrawerClosed
 
-        CloseDrawer ->
-            ( { model | drawerState = DrawerClosed }, Cmd.none )
+                        DrawerClosed ->
+                            DrawerOpen
+            in
+                ( { model | drawerState = newDrawerState }, Cmd.none )
 
 
 drawerItem : Styles.Icon -> String -> Html msg
@@ -87,15 +92,15 @@ drawerHeader title subTitle model =
                             ]
                         ]
                         [ Paper.iconButton
-                            [ onClick OpenDrawer
+                            [ onClick ToggleDrawer
                             , attribute
                                 "icon"
                                 (case model.drawerState of
                                     DrawerOpen ->
-                                        "keyboard_arrow_up"
+                                        "hardware:keyboard-arrow-up"
 
                                     DrawerClosed ->
-                                        "keyboard_arrow_down"
+                                        "hardware:keyboard-arrow-down"
                                 )
                             ]
                             []
@@ -131,8 +136,17 @@ drawerHeader title subTitle model =
             ]
 
 
-drawer : Html Msg -> Html Msg -> Model -> List (Html Msg)
-drawer title subTitle model =
+type alias DrawerAttributes =
+    { title : Html Msg
+    , subTitle : Html Msg
+    , model : Model
+    , openDrawerList : Html Msg
+    , closedDrawerList : Html Msg
+    }
+
+
+drawer : DrawerAttributes -> List (Html Msg)
+drawer { title, subTitle, model, openDrawerList, closedDrawerList } =
     [ Html.div
         []
         [ drawerHeader title subTitle model
@@ -143,16 +157,13 @@ drawer title subTitle model =
                 , Css.flexDirection (Css.column)
                 ]
             ]
-            [ drawerItem
-                { iconName = "server"
-                , iconType = Styles.CustomMaterialIcon
-                }
-                "Active connections"
-            , drawerItem
-                { iconName = "server-off"
-                , iconType = Styles.CustomMaterialIcon
-                }
-                "Inactive connections"
+            [ (case model.drawerState of
+                DrawerOpen ->
+                    openDrawerList
+
+                DrawerClosed ->
+                    closedDrawerList
+              )
             ]
         ]
     ]
