@@ -42,8 +42,14 @@ update msg model =
                 ( { model | drawerState = newDrawerState }, Cmd.none )
 
 
-drawerItem : Styles.Icon -> String -> Html msg
-drawerItem icon itemText =
+type alias DrawerItemProps msg =
+    { icon : Styles.Icon
+    , item : Html msg
+    }
+
+
+drawerItem : Styles.Icon -> Html msg -> Html msg
+drawerItem icon item =
     Html.div
         [ styles
             [ Css.padding (Css.px 16)
@@ -53,8 +59,9 @@ drawerItem icon itemText =
             ]
         ]
         [ Html.span [ styles [ Css.color (Css.rgba 0 0 0 0.54) ] ] [ Styles.fontIcon icon ]
-        , Html.span [ styles [ Css.paddingLeft (Css.px 32) ] ]
-            [ Html.text itemText ]
+        , Styles.body2
+            [ styles [ Css.paddingLeft (Css.px 32) ] ]
+            [ item ]
         ]
 
 
@@ -69,23 +76,38 @@ drawerHeader title subTitle model =
                     , Css.paddingBottom (Css.px 16)
                     ]
                 ]
-                [ Html.span
+                [ Html.div
                     [ styles
-                        ([ Css.color (Css.hex "#ffffff") ]
-                            ++ Styles.ellipsis
-                        )
+                        [ Css.displayFlex
+                        , Css.alignItems (Css.center)
+                        ]
                     ]
-                    [ title ]
-                , Html.div [ styles [ Css.displayFlex, Css.alignItems (Css.center) ] ]
                     [ Html.div
                         [ styles
-                            ([ Css.flex (Css.int 1)
-                             , Css.color (Css.hex "#ffffff")
-                             ]
-                                ++ Styles.ellipsis
-                            )
+                            [ Css.displayFlex
+                            , Css.flexDirection (Css.column)
+                            , Css.flex (Css.int 1)
+                            ]
                         ]
-                        [ subTitle ]
+                        [ Styles.body2
+                            [ styles
+                                ([ Css.color (Css.hex "#ffffff")
+                                 , Css.lineHeight (Css.initial)
+                                 ]
+                                    ++ Styles.ellipsis
+                                )
+                            ]
+                            [ title ]
+                        , Styles.body2
+                            [ styles
+                                ([ Css.flex (Css.int 1)
+                                 , Css.color (Css.rgba 255 255 255 0.75)
+                                 ]
+                                    ++ Styles.ellipsis
+                                )
+                            ]
+                            [ subTitle ]
+                        ]
                     , Html.div
                         [ styles
                             [ Css.color (Css.hex "#ffffff")

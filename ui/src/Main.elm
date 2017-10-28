@@ -160,7 +160,8 @@ connectionEncoder connection =
             , ( "port", Encode.int connection.portNumber )
             , ( "username", Encode.string connection.username )
             , ( "database", Encode.string connection.database )
-              -- , ( "retryFailed", Encode.bool connection.retryFailed )
+
+            -- , ( "retryFailed", Encode.bool connection.retryFailed )
             ]
     in
         Encode.object attributes
@@ -416,8 +417,7 @@ update msg model =
                                 |> Dict.keys
                                 |> List.map getDatabases
                                 -- |> List.append [ Ports.getItemInLocalStorage storageKey ]
-                                |>
-                                    Cmd.batch
+                                |> Cmd.batch
                             )
                     in
                         (Maybe.map2
@@ -701,13 +701,14 @@ sessionListItemView model { sessionId, connection } active index =
                             )
                             [ text "Reconnect"
                             ]
-                          -- , case
-                          --     getFailedMaybe failedSessionMaybe
-                          --   of
-                          --     Just _ ->
-                          --         connectionDialog model
-                          --     Nothing ->
-                          --         div [] []
+
+                        -- , case
+                        --     getFailedMaybe failedSessionMaybe
+                        --   of
+                        --     Just _ ->
+                        --         connectionDialog model
+                        --     Nothing ->
+                        --         div [] []
                         ]
                   else
                     Paper.button
@@ -723,8 +724,8 @@ sessionListItemView model { sessionId, connection } active index =
 openDrawerList : Model -> Html msg
 openDrawerList { currentSession, activeDbSessions } =
     let
-        f : SessionId -> Connection -> Maybe (List (Html msg))
-        f sessionId connection =
+        list : SessionId -> Connection -> Maybe (List (Html msg))
+        list sessionId connection =
             currentSession
                 |> Maybe.map
                     (\cs ->
@@ -733,36 +734,49 @@ openDrawerList { currentSession, activeDbSessions } =
                                 { iconName = "server"
                                 , iconType = Styles.CustomMaterialIcon
                                 }
-                                (connection.database)
+                                (Html.div
+                                    [ styles [ Css.displayFlex, Css.flexDirection (Css.column) ]
+                                    ]
+                                    [ Html.span
+                                        [ styles [ Css.lineHeight (Css.initial) ]
+                                        ]
+                                        [ text (connection.database) ]
+                                    , Html.span
+                                        [ styles [ Css.color (Css.hex "#737373"), Css.fontWeight (Css.int (400)) ]
+                                        ]
+                                        [ connectionString connection |> text ]
+                                    ]
+                                )
                               )
-                            , Html.span
-                                [ styles [ Css.paddingLeft (Css.px 32) ]
-                                ]
-                                [ connectionString connection |> text ]
                             ]
                         else
                             []
                     )
     in
-        Dict.toList activeDbSessions
-            |> List.filterMap (\( sessionId, connection ) -> f sessionId connection)
-            |> List.concat
-            |> Html.div []
+        Html.div []
+            ([ (Drawer.drawerItem { iconName = "add", iconType = Styles.MaterialIcon } (text "New connection")) ]
+                |> List.append
+                    (Dict.toList
+                        activeDbSessions
+                        |> List.filterMap (\( sessionId, connection ) -> list sessionId connection)
+                        |> List.concat
+                    )
+            )
 
 
 closedDrawerList : Model -> Html msg
 closedDrawerList model =
     Html.div []
         [ Drawer.drawerItem
-            { iconName = "server"
+            { iconName = "database"
             , iconType = Styles.CustomMaterialIcon
             }
-            "Active connections"
+            (text "Databases")
         , Drawer.drawerItem
             { iconName = "server-off"
             , iconType = Styles.CustomMaterialIcon
             }
-            "Inactive connections"
+            (text "Inactive connections")
         ]
 
 

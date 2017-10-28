@@ -53,3 +53,17 @@ ellipsis =
     , Css.overflow Css.hidden
     , Css.textOverflow Css.ellipsis
     ]
+
+
+body2 : List (Html.Attribute msg) -> List (Html.Html msg) -> Html.Html msg
+body2 attributes children =
+    Html.span
+        ([ styles
+            [ Css.fontSize (Css.px 14)
+            , Css.fontWeight (Css.int 500)
+            , Css.lineHeight (Css.px 24)
+            ]
+         ]
+            ++ attributes
+        )
+        children
