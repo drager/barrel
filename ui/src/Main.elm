@@ -7,17 +7,24 @@ import Form exposing (Form)
 import Form.Error
 import Form.Field as Field exposing (Field)
 import Form.Validate as Validate exposing (field, map5, Validation)
-import Styles exposing (..)
 import Css
 import Http
 import Dict exposing (Dict)
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Ports exposing (..)
-import Utils
-import Drawer
 import WebComponents.AppLayout as AppLayout
 import WebComponents.Paper as Paper
+import Navigation
+
+
+-- Own modules
+
+import Styles exposing (..)
+import Utils
+import Drawer
+import Routing
+import Database
 
 
 -- type alias Connection = { host : String, username : String }
@@ -70,12 +77,14 @@ type alias ConnectionForm =
 
 
 type alias Model =
-    { form : Form () ConnectionForm
+    { route : Routing.Route
+    , form : Form () ConnectionForm
     , activeDbSessions : ActiveDbSessions
     , inActiveDbSessions : InactiveDbSessions
     , databases : List Database
     , currentSession : Maybe CurrentSession
     , drawerModel : Drawer.Model
+    , databaseModel : Database.Model
     }
 
 
@@ -91,7 +100,9 @@ type alias SessionId =
 
 
 type Msg
-    = FormMsg Form.Msg
+    = OnLocationChange Navigation.Location
+    | NewUrl String
+    | FormMsg Form.Msg
     | ReceiveFromLocalStorage ( String, Decode.Value )
     | ReceiveFromSessionStorage ( String, Decode.Value )
     | ConnectToDatabase Connection (Result Http.Error SessionId)
@@ -101,6 +112,7 @@ type Msg
     | GetDatabases SessionId (Result Http.Error (List Database))
     | SetReconnectionForm Connection
     | DrawerMsg Drawer.Msg
+    | DatabaseMsg Database.Msg
 
 
 storageKey : String
@@ -237,18 +249,23 @@ validation =
         (field "database" Validate.string)
 
 
-init : ( Model, Cmd Msg )
-init =
+init : Navigation.Location -> ( Model, Cmd Msg )
+init location =
     let
         ( drawerModel, _ ) =
             Drawer.init
+
+        ( databaseModel, _ ) =
+            Database.init
     in
-        ( { form = Form.initial [] validation
+        ( { route = Routing.parseLocation location
+          , form = Form.initial [] validation
           , activeDbSessions = Dict.empty
           , inActiveDbSessions = Dict.empty
           , databases = []
           , currentSession = Nothing
           , drawerModel = drawerModel
+          , databaseModel = databaseModel
           }
         , Ports.getItemInSessionStorage storageKey
         )
@@ -281,6 +298,12 @@ storageEncoder sessionId connection =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        OnLocationChange location ->
+            ( { model | route = Routing.parseLocation location }, Cmd.none )
+
+        NewUrl url ->
+            ( model, Navigation.newUrl url )
+
         FormMsg formMsg ->
             case ( formMsg, Form.getOutput model.form ) of
                 ( Form.Submit, Just user ) ->
@@ -321,7 +344,9 @@ update msg model =
             in
                 Maybe.map
                     (\session ->
-                        ( { model | activeDbSessions = Dict.insert sessionId session model.activeDbSessions }
+                        ( { model
+                            | activeDbSessions = Dict.insert sessionId session model.activeDbSessions
+                          }
                         , Cmd.batch
                             [ pushItemInSessionStorage ( storageKey, (storageEncoder sessionId session) )
                             , getDatabases sessionId
@@ -467,6 +492,13 @@ update msg model =
             in
                 ( { model | drawerModel = updatedDrawerModel }, Cmd.map DrawerMsg drawerCmd )
 
+        DatabaseMsg databaseMsg ->
+            let
+                ( updatedDatabaseModel, databaseCmd ) =
+                    Database.update databaseMsg model.databaseModel
+            in
+                ( { model | databaseModel = updatedDatabaseModel }, Cmd.map DatabaseMsg databaseCmd )
+
 
 initialFields : Connection -> List ( String, Field )
 initialFields connectionInfo =
@@ -591,15 +623,42 @@ header model =
         ]
 
 
-mainView : Model -> List (Html Msg) -> Html Msg
-mainView model children =
+mainView : Model -> Html Msg
+mainView model =
     div
         [ styles
             [ Css.color (Css.hex "#000000")
             , Css.displayFlex
             ]
         ]
-        children
+        [ div [ styles [ Css.flex (Css.int 1) ] ]
+            [ if not (Dict.isEmpty model.activeDbSessions) then
+                div []
+                    [ model.activeDbSessions
+                        |> sessionListView model
+                    , model.inActiveDbSessions
+                        |> sessionListView model
+                    , div [] [ (Html.h1 [] [ (text "Databases") ]), listDatabasesView model ]
+                    , Html.map FormMsg (connectionFormView model)
+                    ]
+              else if not (Dict.isEmpty model.inActiveDbSessions) then
+                div []
+                    [ model.inActiveDbSessions
+                        |> sessionListView model
+                    , Html.map FormMsg (connectionFormView model)
+                    ]
+              else
+                div
+                    [ styles
+                        [ Css.displayFlex
+                        , Css.flexDirection Css.column
+                        , Css.alignItems Css.center
+                        , Css.flex (Css.int 1)
+                        ]
+                    ]
+                    [ Html.map FormMsg (connectionFormView model) ]
+            ]
+        ]
 
 
 listDatabasesView : Model -> Html Msg
@@ -780,14 +839,20 @@ openDrawerList { currentSession, activeDbSessions } =
             )
 
 
+
+-- Html.Events.onClick (NewUrl "databases")
+
+
 closedDrawerList : Model -> Html msg
 closedDrawerList model =
     Html.div []
-        [ Drawer.drawerItem
-            { iconName = "database"
-            , iconType = Styles.CustomMaterialIcon
-            }
-            (text "Databases")
+        [ Html.div []
+            [ Drawer.drawerItem
+                { iconName = "database"
+                , iconType = Styles.CustomMaterialIcon
+                }
+                (text "Databases")
+            ]
         , Drawer.drawerItem
             { iconName = "server-off"
             , iconType = Styles.CustomMaterialIcon
@@ -810,10 +875,7 @@ leftDrawer model currentSession =
                     , closedDrawerList = closedDrawerList model
                     }
                  )
-                    |> List.map
-                        (\l ->
-                            Html.map (\h -> DrawerMsg h) l
-                        )
+                    |> List.map (Html.map DrawerMsg)
                 )
             )
             model.currentSession
@@ -821,50 +883,38 @@ leftDrawer model currentSession =
         )
 
 
+notFoundView : Html msg
+notFoundView =
+    Html.div [] [ text "Not found" ]
+
+
+viewPage : Model -> Html Msg
+viewPage model =
+    case model.route of
+        Routing.HomeRoute ->
+            mainView model
+
+        Routing.DatabasesRoute ->
+            Database.view model.databaseModel |> Html.map DatabaseMsg
+
+        Routing.NotFoundRoute ->
+            notFoundView
+
+
 view : Model -> Html Msg
 view model =
-    let
-        children =
-            [ div [ styles [ Css.flex (Css.int 1) ] ]
-                [ if not (Dict.isEmpty model.activeDbSessions) then
-                    div []
-                        [ model.activeDbSessions
-                            |> sessionListView model
-                        , model.inActiveDbSessions
-                            |> sessionListView model
-                        , div [] [ (Html.h1 [] [ (text "Databases") ]), listDatabasesView model ]
-                        , Html.map FormMsg (connectionFormView model)
-                        ]
-                  else if not (Dict.isEmpty model.inActiveDbSessions) then
-                    div []
-                        [ model.inActiveDbSessions
-                            |> sessionListView model
-                        , Html.map FormMsg (connectionFormView model)
-                        ]
-                  else
-                    div
-                        [ styles
-                            [ Css.displayFlex
-                            , Css.flexDirection Css.column
-                            , Css.alignItems Css.center
-                            , Css.flex (Css.int 1)
-                            ]
-                        ]
-                        [ Html.map FormMsg (connectionFormView model) ]
+    div []
+        [ AppLayout.drawerLayout []
+            [ (Maybe.map (\currentSession -> leftDrawer model currentSession) model.currentSession)
+                |> Maybe.withDefault (div [] [])
+            , AppLayout.headerLayout []
+                [ header model
+                , viewPage model
+                , Html.div [ Html.Events.onClick (NewUrl "databases") ] [ text "AA" ]
                 ]
             ]
-    in
-        div []
-            [ AppLayout.drawerLayout []
-                [ (Maybe.map (\currentSession -> leftDrawer model currentSession) model.currentSession)
-                    |> Maybe.withDefault (div [] [])
-                , AppLayout.headerLayout []
-                    [ header model
-                    , mainView model children
-                    ]
-                ]
-            , Html.map FormMsg (connectionDialog model)
-            ]
+        , Html.map FormMsg (connectionDialog model)
+        ]
 
 
 subscriptions : Model -> Sub Msg
@@ -877,7 +927,7 @@ subscriptions model =
 
 main : Program Never Model Msg
 main =
-    Html.program
+    Navigation.program OnLocationChange
         { view = view
         , init = init
         , update = update
