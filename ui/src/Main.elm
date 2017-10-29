@@ -364,14 +364,30 @@ update msg model =
                 activeSessionsCount =
                     Dict.size model.activeDbSessions
 
-                _ =
-                    Debug.log "activeSessionsCount" activeSessionsCount
+                sessionBefore : Maybe ( String, Connection )
+                sessionBefore =
+                    let
+                        keys =
+                            Dict.keys model.activeDbSessions
+                    in
+                        Dict.filter (\k v -> k /= sessionId) model.activeDbSessions
+                            |> Dict.toList
+                            |> List.head
 
                 newModel =
                     if activeSessionsCount <= 1 then
                         { model | activeDbSessions = sessions, currentSession = Maybe.Nothing }
                     else
-                        { model | activeDbSessions = sessions }
+                        { model
+                            | activeDbSessions = sessions
+                            , currentSession =
+                                (Maybe.map
+                                    (\( session, connection ) ->
+                                        { sessionId = session, connection = connection }
+                                    )
+                                    sessionBefore
+                                )
+                        }
             in
                 ( newModel
                 , Cmd.batch
