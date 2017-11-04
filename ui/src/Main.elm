@@ -1,13 +1,11 @@
 module Main exposing (..)
 
-import Html exposing (Html, text, div, img, h1)
+import Html exposing (Html, text, div, h1)
 import Html.Attributes exposing (attribute, id)
-import Html.Events exposing (onClick, onSubmit)
+import Html.Events exposing (onClick)
 import Css
-import Http
 import Dict exposing (Dict)
-import Json.Decode as Decode
-import Ports exposing (..)
+import Ports
 import WebComponents.AppLayout as AppLayout
 import WebComponents.Paper as Paper
 import Navigation
@@ -25,59 +23,18 @@ import Session
 
 type alias Model =
     { route : Routing.Route
-    , databases : List Database
     , drawerModel : Drawer.Model
     , databaseModel : Database.Model
     , sessionModel : Session.Model
     }
 
 
-type alias Database =
-    { name : String
-    , oid : Int
-    , sessionId : Maybe DbSessions.SessionId
-    }
-
-
 type Msg
     = OnLocationChange Navigation.Location
     | NewUrl String
-    | GetDatabases DbSessions.SessionId (Result Http.Error (List Database))
     | DrawerMsg Drawer.Msg
     | DatabaseMsg Database.Msg
     | SessionMsg Session.Msg
-
-
-decodeDatabase : Decode.Decoder Database
-decodeDatabase =
-    Decode.map3 Database
-        (Decode.field "name" Decode.string)
-        (Decode.field "oid" Decode.int)
-        (Decode.maybe (Session.decodeSessionId))
-
-
-getApiUrl : String
-getApiUrl =
-    "http://localhost:8000"
-
-
-sessionIdRequest : DbSessions.SessionId -> String -> Decode.Decoder a -> Http.Request a
-sessionIdRequest sessionId url decoder =
-    Http.request
-        { method = "GET"
-        , headers = [ Http.header "X-Session-Id" sessionId ]
-        , url = url
-        , body = Http.emptyBody
-        , expect = Http.expectJson decoder
-        , timeout = Nothing
-        , withCredentials = False
-        }
-
-
-getDatabases : DbSessions.SessionId -> Cmd Msg
-getDatabases sessionId =
-    Http.send (GetDatabases sessionId)
-        (sessionIdRequest sessionId (getApiUrl ++ "/databases") (Decode.list decodeDatabase))
 
 
 init : Navigation.Location -> ( Model, Cmd Msg )
@@ -93,7 +50,6 @@ init location =
             Session.init
     in
         ( { route = Routing.parseLocation location
-          , databases = []
           , drawerModel = drawerModel
           , databaseModel = databaseModel
           , sessionModel = sessionModel
@@ -110,16 +66,6 @@ update msg model =
 
         NewUrl url ->
             ( model, Navigation.newUrl url )
-
-        GetDatabases sessionId (Ok databases) ->
-            let
-                databasesWithSession =
-                    List.map (\database -> { database | sessionId = Just sessionId }) databases
-            in
-                ( { model | databases = List.append databasesWithSession model.databases }, Cmd.none )
-
-        GetDatabases _ (Err _) ->
-            ( model, Cmd.none )
 
         SessionMsg sessionMsg ->
             let
@@ -186,7 +132,12 @@ mainView model =
                         (model.sessionModel.inActiveDbSessions
                             |> Session.sessionListView model.sessionModel
                         )
-                    , div [] [ (Html.h1 [] [ (text "Databases") ]), listDatabasesView model ]
+                    , Html.map DatabaseMsg
+                        (div []
+                            [ (Html.h1 [] [ (text "Databases") ])
+                            , Database.listDatabasesView model.databaseModel
+                            ]
+                        )
                     , Html.map SessionMsg (Session.connectionFormView model.sessionModel)
                     ]
               else if not (Dict.isEmpty model.sessionModel.inActiveDbSessions) then
@@ -207,25 +158,6 @@ mainView model =
                         ]
                     ]
                     [ Html.map SessionMsg (Session.connectionFormView model.sessionModel) ]
-            ]
-        ]
-
-
-listDatabasesView : Model -> Html Msg
-listDatabasesView model =
-    div [ styles [ Css.flex (Css.int 1) ], attribute "role" "listbox" ]
-        (List.map databaseListItemView model.databases)
-
-
-databaseListItemView : Database -> Html Msg
-databaseListItemView database =
-    Paper.item []
-        [ Paper.itemBody [ attribute "two-line" "true" ]
-            [ div [] [ text database.name ]
-            , div
-                [ attribute "secondary" "true"
-                ]
-                [ text ("Oid: " ++ (database.oid |> toString)), text " - ", (Maybe.map text database.sessionId) |> Maybe.withDefault ("" |> text) ]
             ]
         ]
 
