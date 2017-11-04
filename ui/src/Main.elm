@@ -14,7 +14,6 @@ import Navigation
 -- Own modules
 
 import Styles exposing (..)
-import Drawer
 import Routing
 import Database
 import DbSessions
@@ -23,26 +22,28 @@ import Session
 
 type alias Model =
     { route : Routing.Route
-    , drawerModel : Drawer.Model
     , databaseModel : Database.Model
     , sessionModel : Session.Model
+    , drawerState : DrawerState
     }
 
 
 type Msg
     = OnLocationChange Navigation.Location
     | NewUrl String
-    | DrawerMsg Drawer.Msg
     | DatabaseMsg Database.Msg
     | SessionMsg Session.Msg
+    | ToggleDrawer
+
+
+type DrawerState
+    = DrawerOpen
+    | DrawerClosed
 
 
 init : Navigation.Location -> ( Model, Cmd Msg )
 init location =
     let
-        ( drawerModel, _ ) =
-            Drawer.init
-
         ( databaseModel, _ ) =
             Database.init
 
@@ -50,9 +51,9 @@ init location =
             Session.init
     in
         ( { route = Routing.parseLocation location
-          , drawerModel = drawerModel
           , databaseModel = databaseModel
           , sessionModel = sessionModel
+          , drawerState = DrawerClosed
           }
         , Ports.getItemInSessionStorage Session.dbSessionsStorageKey
         )
@@ -74,19 +75,24 @@ update msg model =
             in
                 ( { model | sessionModel = updatedSessionModel }, Cmd.map SessionMsg sessionCmd )
 
-        DrawerMsg drawerMsg ->
-            let
-                ( updatedDrawerModel, drawerCmd ) =
-                    Drawer.update drawerMsg model.drawerModel
-            in
-                ( { model | drawerModel = updatedDrawerModel }, Cmd.map DrawerMsg drawerCmd )
-
         DatabaseMsg databaseMsg ->
             let
                 ( updatedDatabaseModel, databaseCmd ) =
                     Database.update databaseMsg model.databaseModel
             in
                 ( { model | databaseModel = updatedDatabaseModel }, Cmd.map DatabaseMsg databaseCmd )
+
+        ToggleDrawer ->
+            let
+                newDrawerState =
+                    case model.drawerState of
+                        DrawerOpen ->
+                            DrawerClosed
+
+                        DrawerClosed ->
+                            DrawerOpen
+            in
+                ( { model | drawerState = newDrawerState }, Cmd.none )
 
 
 header : Model -> Html msg
@@ -171,7 +177,7 @@ openDrawerList { sessionModel } =
                 |> Maybe.map
                     (\cs ->
                         if not (cs.sessionId == sessionId) then
-                            [ (Drawer.drawerItem
+                            [ (drawerItem
                                 { iconName = "server"
                                 , iconType = Styles.CustomMaterialIcon
                                 }
@@ -195,7 +201,7 @@ openDrawerList { sessionModel } =
                     )
     in
         Html.div []
-            ([ (Drawer.drawerItem { iconName = "add", iconType = Styles.MaterialIcon } (text "New connection")) ]
+            ([ (drawerItem { iconName = "add", iconType = Styles.MaterialIcon } (text "New connection")) ]
                 |> List.append
                     (Dict.toList
                         sessionModel.activeDbSessions
@@ -205,21 +211,151 @@ openDrawerList { sessionModel } =
             )
 
 
+drawer : Html Msg -> Html Msg -> Model -> List (Html Msg)
+drawer title subTitle model =
+    [ Html.div
+        []
+        [ drawerHeader title subTitle model
+        , Html.div
+            [ styles
+                [ Css.displayFlex
+                , Css.flex (Css.int 1)
+                , Css.flexDirection (Css.column)
+                ]
+            ]
+            [ (case model.drawerState of
+                DrawerOpen ->
+                    openDrawerList model
 
--- Html.Events.onClick (NewUrl "databases")
+                DrawerClosed ->
+                    closedDrawerList model
+              )
+            ]
+        ]
+    ]
 
 
-closedDrawerList : Model -> Html msg
+drawerItem : Styles.Icon -> Html msg -> Html msg
+drawerItem icon item =
+    Html.div
+        [ styles
+            [ Css.padding (Css.px 16)
+            , Css.displayFlex
+            , Css.displayFlex
+            , Css.alignItems (Css.center)
+            ]
+        ]
+        [ Html.span [ styles [ Css.color (Css.rgba 0 0 0 0.54) ] ] [ Styles.fontIcon icon ]
+        , Styles.body2
+            [ styles [ Css.paddingLeft (Css.px 32) ] ]
+            [ item ]
+        ]
+
+
+drawerHeader : Html Msg -> Html Msg -> Model -> Html Msg
+drawerHeader title subTitle model =
+    let
+        titleRow =
+            Html.div
+                [ styles
+                    [ Css.paddingLeft (Css.px 16)
+                    , Css.paddingRight (Css.px 16)
+                    , Css.paddingBottom (Css.px 16)
+                    ]
+                ]
+                [ Html.div
+                    [ styles
+                        [ Css.displayFlex
+                        , Css.alignItems (Css.center)
+                        ]
+                    ]
+                    [ Html.div
+                        [ styles
+                            [ Css.displayFlex
+                            , Css.flexDirection (Css.column)
+                            , Css.flex (Css.int 1)
+                            ]
+                        ]
+                        [ Styles.body2
+                            [ styles
+                                ([ Css.color (Css.hex "#ffffff")
+                                 , Css.lineHeight (Css.initial)
+                                 ]
+                                    ++ Styles.ellipsis
+                                )
+                            ]
+                            [ title ]
+                        , Styles.body2
+                            [ styles
+                                ([ Css.flex (Css.int 1)
+                                 , Css.color (Css.rgba 255 255 255 0.75)
+                                 ]
+                                    ++ Styles.ellipsis
+                                )
+                            ]
+                            [ subTitle ]
+                        ]
+                    , Html.div
+                        [ styles
+                            [ Css.color (Css.hex "#ffffff")
+                            ]
+                        ]
+                        [ Paper.iconButton
+                            [ onClick ToggleDrawer
+                            , attribute
+                                "icon"
+                                (case model.drawerState of
+                                    DrawerOpen ->
+                                        "hardware:keyboard-arrow-up"
+
+                                    DrawerClosed ->
+                                        "hardware:keyboard-arrow-down"
+                                )
+                            ]
+                            []
+                        ]
+                    ]
+                ]
+    in
+        Html.div
+            [ styles
+                [ Css.backgroundColor (Css.rgb 96 125 139)
+                , Css.backgroundSize Css.cover
+                ]
+            ]
+            [ Html.div [ styles [ Css.padding (Css.px 16), Css.paddingTop (Css.px 32) ] ]
+                [ Html.div
+                    [ styles
+                        [ Css.borderRadius (Css.px 50)
+                        , Css.backgroundColor (Css.hex "#ffffff")
+                        , Css.width (Css.px 56)
+                        , Css.height (Css.px 56)
+                        , Css.displayFlex
+                        , Css.justifyContent (Css.center)
+                        , Css.alignItems (Css.center)
+                        ]
+                    ]
+                    [ Styles.fontIcon
+                        { iconName = "server"
+                        , iconType = Styles.CustomMaterialIcon
+                        }
+                    ]
+                ]
+            , titleRow
+            ]
+
+
+closedDrawerList : Model -> Html Msg
 closedDrawerList model =
     Html.div []
-        [ Html.div []
-            [ Drawer.drawerItem
+        [ Html.div [ Html.Events.onClick (NewUrl "databases") ]
+            [ drawerItem
                 { iconName = "database"
                 , iconType = Styles.CustomMaterialIcon
                 }
                 (text "Databases")
             ]
-        , Drawer.drawerItem
+        , drawerItem
             { iconName = "server-off"
             , iconType = Styles.CustomMaterialIcon
             }
@@ -232,17 +368,10 @@ leftDrawer model currentSession =
     AppLayout.drawer [ attribute "slot" "drawer" ]
         (Maybe.map
             (\currentSession ->
-                ((Drawer.drawer
-                    { title = (text currentSession.connection.database)
-                    , subTitle =
-                        (text (Session.connectionString currentSession.connection))
-                    , model = model.drawerModel
-                    , openDrawerList = openDrawerList model
-                    , closedDrawerList = closedDrawerList model
-                    }
-                 )
-                    |> List.map (Html.map DrawerMsg)
-                )
+                drawer
+                    (text currentSession.connection.database)
+                    (text (Session.connectionString currentSession.connection))
+                    model
             )
             model.sessionModel.currentSession
             |> Maybe.withDefault ([])
