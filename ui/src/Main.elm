@@ -195,12 +195,6 @@ mainView model =
                         (model.sessionModel.inActiveDbSessions
                             |> Session.sessionListView model.sessionModel
                         )
-                    , Html.map DatabaseMsg
-                        (div []
-                            [ (Html.h1 [] [ (text "Databases") ])
-                            , Database.listDatabasesView model.databaseModel model.sessionModel.currentSession
-                            ]
-                        )
                     , Html.map SessionMsg (Session.connectionFormView model.sessionModel)
                     ]
               else if not (Dict.isEmpty model.sessionModel.inActiveDbSessions) then
@@ -475,7 +469,6 @@ view model =
             , AppLayout.headerLayout []
                 [ header model
                 , viewPage model
-                , Html.div [ Html.Events.onClick (NewUrl "databases") ] [ text "AA" ]
                 ]
             ]
         , Html.map SessionMsg (Session.connectionDialog model.sessionModel)
