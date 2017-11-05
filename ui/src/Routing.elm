@@ -7,6 +7,7 @@ import UrlParser as Url exposing (s, top)
 type Route
     = HomeRoute
     | DatabasesRoute
+    | NewConnectionRoute
     | NotFoundRoute
 
 
@@ -15,6 +16,7 @@ route =
     Url.oneOf
         [ Url.map HomeRoute top
         , Url.map DatabasesRoute (s "databases")
+        , Url.map NewConnectionRoute (s "new-connection")
         ]
 
 

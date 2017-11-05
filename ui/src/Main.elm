@@ -5,7 +5,6 @@ import Html.Attributes exposing (attribute, id)
 import Html.Events exposing (onClick)
 import Css
 import Dict exposing (Dict)
-import Ports
 import WebComponents.AppLayout as AppLayout
 import WebComponents.Paper as Paper
 import Navigation
@@ -44,18 +43,27 @@ type DrawerState
 init : Navigation.Location -> ( Model, Cmd Msg )
 init location =
     let
-        ( databaseModel, _ ) =
+        ( sessionModel, sessionCmd ) =
+            Session.init
+
+        ( databaseModel, databaseCmd ) =
             Database.init
 
-        ( sessionModel, _ ) =
-            Session.init
+        route =
+            Routing.parseLocation location
+
+        newModel =
+            { route = route
+            , databaseModel = databaseModel
+            , sessionModel = sessionModel
+            , drawerState = DrawerClosed
+            }
     in
-        ( { route = Routing.parseLocation location
-          , databaseModel = databaseModel
-          , sessionModel = sessionModel
-          , drawerState = DrawerClosed
-          }
-        , Ports.getItemInSessionStorage Session.dbSessionsStorageKey
+        ( newModel
+        , Cmd.batch
+            [ Cmd.map SessionMsg sessionCmd
+            , Cmd.map DatabaseMsg databaseCmd
+            ]
         )
 
 
@@ -63,7 +71,14 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         OnLocationChange location ->
-            ( { model | route = Routing.parseLocation location }, Cmd.none )
+            let
+                route =
+                    Routing.parseLocation location
+
+                commands =
+                    commandsForRoute route model.sessionModel.currentSession
+            in
+                ( { model | route = route }, commands )
 
         NewUrl url ->
             ( model, Navigation.newUrl url )
@@ -72,8 +87,14 @@ update msg model =
             let
                 ( updatedSessionModel, sessionCmd ) =
                     Session.update sessionMsg model.sessionModel
+
+                commands =
+                    Cmd.batch
+                        [ Cmd.map SessionMsg sessionCmd
+                        , commandsForRoute model.route updatedSessionModel.currentSession
+                        ]
             in
-                ( { model | sessionModel = updatedSessionModel }, Cmd.map SessionMsg sessionCmd )
+                ( { model | sessionModel = updatedSessionModel }, commands )
 
         DatabaseMsg databaseMsg ->
             let
@@ -93,6 +114,28 @@ update msg model =
                             DrawerOpen
             in
                 ( { model | drawerState = newDrawerState }, Cmd.none )
+
+
+commandsForRoute : Routing.Route -> Maybe Session.CurrentSession -> Cmd Msg
+commandsForRoute route currentSession =
+    case route of
+        Routing.HomeRoute ->
+            Cmd.none
+
+        Routing.DatabasesRoute ->
+            case currentSession of
+                Maybe.Just { sessionId } ->
+                    Database.getDatabases sessionId
+                        |> Cmd.map DatabaseMsg
+
+                Maybe.Nothing ->
+                    Cmd.none
+
+        Routing.NewConnectionRoute ->
+            Cmd.none
+
+        Routing.NotFoundRoute ->
+            Cmd.none
 
 
 header : Model -> Html msg
@@ -141,7 +184,7 @@ mainView model =
                     , Html.map DatabaseMsg
                         (div []
                             [ (Html.h1 [] [ (text "Databases") ])
-                            , Database.listDatabasesView model.databaseModel
+                            , Database.listDatabasesView model.databaseModel model.sessionModel.currentSession
                             ]
                         )
                     , Html.map SessionMsg (Session.connectionFormView model.sessionModel)
@@ -168,7 +211,7 @@ mainView model =
         ]
 
 
-openDrawerList : Model -> Html msg
+openDrawerList : Model -> Html Msg
 openDrawerList { sessionModel } =
     let
         list : DbSessions.SessionId -> DbSessions.Connection -> Maybe (List (Html msg))
@@ -200,7 +243,7 @@ openDrawerList { sessionModel } =
                             []
                     )
     in
-        Html.div []
+        Html.div [ Html.Events.onClick (NewUrl "new-connection") ]
             ([ (drawerItem { iconName = "add", iconType = Styles.MaterialIcon } (text "New connection")) ]
                 |> List.append
                     (Dict.toList
@@ -390,7 +433,11 @@ viewPage model =
             mainView model
 
         Routing.DatabasesRoute ->
-            Database.view model.databaseModel |> Html.map DatabaseMsg
+            Database.view model.databaseModel model.sessionModel
+                |> Html.map DatabaseMsg
+
+        Routing.NewConnectionRoute ->
+            notFoundView
 
         Routing.NotFoundRoute ->
             notFoundView

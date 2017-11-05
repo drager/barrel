@@ -112,7 +112,7 @@ init =
       , inActiveDbSessions = Dict.empty
       , currentSession = Nothing
       }
-    , Cmd.none
+    , Ports.getItemInSessionStorage dbSessionsStorageKey
     )
 
 
@@ -529,6 +529,7 @@ connectionDialog model =
         , attribute "entry-animation" "scale-up-animation"
         , attribute "exit-animation" "fade-out-animation"
         , attribute "with-backdrop" "true"
+        , recordDialogClick
         ]
         [ Html.h2 [] [ text "Reconnect" ]
         , connectionFormView model
