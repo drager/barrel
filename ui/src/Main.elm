@@ -33,6 +33,7 @@ type Msg
     | DatabaseMsg Database.Msg
     | SessionMsg Session.Msg
     | ToggleDrawer
+    | SetCurrentSession Session.CurrentSession
 
 
 type DrawerState
@@ -114,6 +115,19 @@ update msg model =
                             DrawerOpen
             in
                 ( { model | drawerState = newDrawerState }, Cmd.none )
+
+        SetCurrentSession session ->
+            let
+                oldSessionModel =
+                    model.sessionModel
+
+                newSessionModel =
+                    { oldSessionModel | currentSession = Maybe.Just session }
+            in
+                ( { model | sessionModel = newSessionModel }
+                , Database.getDatabases session.sessionId
+                    |> Cmd.map DatabaseMsg
+                )
 
 
 commandsForRoute : Routing.Route -> Maybe Session.CurrentSession -> Cmd Msg
@@ -214,7 +228,7 @@ mainView model =
 openDrawerList : Model -> Html Msg
 openDrawerList { sessionModel } =
     let
-        list : DbSessions.SessionId -> DbSessions.Connection -> Maybe (List (Html msg))
+        list : DbSessions.SessionId -> DbSessions.Connection -> Maybe (List (Html Msg))
         list sessionId connection =
             sessionModel.currentSession
                 |> Maybe.map
@@ -225,7 +239,11 @@ openDrawerList { sessionModel } =
                                 , iconType = Styles.CustomMaterialIcon
                                 }
                                 (Html.div
-                                    [ styles [ Css.displayFlex, Css.flexDirection (Css.column) ]
+                                    [ styles
+                                        [ Css.displayFlex
+                                        , Css.flexDirection (Css.column)
+                                        ]
+                                    , Html.Events.onClick (SetCurrentSession (Session.CurrentSession sessionId connection))
                                     ]
                                     [ Html.span
                                         [ styles [ Css.lineHeight (Css.initial) ]
@@ -243,8 +261,13 @@ openDrawerList { sessionModel } =
                             []
                     )
     in
-        Html.div [ Html.Events.onClick (NewUrl "new-connection") ]
-            ([ (drawerItem { iconName = "add", iconType = Styles.MaterialIcon } (text "New connection")) ]
+        Html.div []
+            ([ Html.div [ Html.Events.onClick (NewUrl "new-connection") ]
+                [ (drawerItem { iconName = "add", iconType = Styles.MaterialIcon }
+                    (text "New connection")
+                  )
+                ]
+             ]
                 |> List.append
                     (Dict.toList
                         sessionModel.activeDbSessions
