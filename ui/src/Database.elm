@@ -13,6 +13,7 @@ module Database
 import Html exposing (Html, div, text)
 import Html.Attributes exposing (attribute, id)
 import Css
+import Dict exposing (Dict)
 import Styles exposing (..)
 import Http
 import Json.Decode as Decode
@@ -21,15 +22,18 @@ import Session
 import WebComponents.Paper as Paper
 
 
+type alias Databases =
+    Dict DbSessions.SessionId (List Database)
+
+
 type alias Database =
     { name : String
     , oid : Int
-    , sessionId : Maybe DbSessions.SessionId
     }
 
 
 type alias Model =
-    { databases : List Database }
+    { databases : Databases }
 
 
 type Msg
@@ -38,45 +42,32 @@ type Msg
 
 init : ( Model, Cmd Msg )
 init =
-    ( { databases = [] }, Cmd.none )
+    ( { databases = Dict.empty }, Cmd.none )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         GetDatabases sessionId (Ok databases) ->
-            let
-                databasesWithSession =
-                    List.map
-                        (\database ->
-                            { database | sessionId = Just sessionId }
-                        )
+            ( { model
+                | databases =
+                    Dict.insert
+                        sessionId
                         databases
-            in
-                ( { model
-                    | databases =
-                        List.append
-                            databasesWithSession
-                            model.databases
-                  }
-                , Cmd.none
-                )
+                        model.databases
+              }
+            , Cmd.none
+            )
 
         GetDatabases _ (Err _) ->
             ( model, Cmd.none )
 
 
-view : Model -> Html Msg
-view model =
-    Html.div [] [ text "Databases" ]
-
-
 decodeDatabase : Decode.Decoder Database
 decodeDatabase =
-    Decode.map3 Database
+    Decode.map2 Database
         (Decode.field "name" Decode.string)
         (Decode.field "oid" Decode.int)
-        (Decode.maybe (Session.decodeSessionId))
 
 
 getApiUrl : String
@@ -107,10 +98,17 @@ getDatabases sessionId =
         (sessionIdRequest sessionId (getApiUrl ++ "/databases") (Decode.list decodeDatabase))
 
 
-listDatabasesView : Model -> Html Msg
-listDatabasesView model =
+listDatabasesView : Model -> Maybe Session.CurrentSession -> Html Msg
+listDatabasesView model currentSession =
     div [ styles [ Css.flex (Css.int 1) ], attribute "role" "listbox" ]
-        (List.map databaseListItemView model.databases)
+        (Maybe.andThen
+            (\{ sessionId } ->
+                Dict.get sessionId model.databases
+            )
+            currentSession
+            |> Maybe.withDefault []
+            |> List.map databaseListItemView
+        )
 
 
 databaseListItemView : Database -> Html Msg
@@ -122,9 +120,11 @@ databaseListItemView database =
                 [ attribute "secondary" "true"
                 ]
                 [ text ("Oid: " ++ (database.oid |> toString))
-                , text " - "
-                , (Maybe.map text database.sessionId)
-                    |> Maybe.withDefault ("" |> text)
                 ]
             ]
         ]
+
+
+view : Model -> Session.Model -> Html Msg
+view model sessionModel =
+    Html.div [] [ listDatabasesView model sessionModel.currentSession ]
