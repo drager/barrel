@@ -1,7 +1,7 @@
 module Routing exposing (..)
 
 import Navigation
-import UrlParser as Url exposing (s, top)
+import UrlParser as Url exposing (s, top, (</>))
 
 
 type Route
@@ -9,6 +9,7 @@ type Route
     | DatabasesRoute
     | NewConnectionRoute
     | NotFoundRoute
+    | InActiveConnectionsRoute
 
 
 route : Url.Parser (Route -> a) a
@@ -16,7 +17,8 @@ route =
     Url.oneOf
         [ Url.map HomeRoute top
         , Url.map DatabasesRoute (s "databases")
-        , Url.map NewConnectionRoute (s "new-connection")
+        , Url.map NewConnectionRoute (s "connections" </> s "new")
+        , Url.map InActiveConnectionsRoute (s "connections" </> s "inactive")
         ]
 
 
@@ -28,3 +30,22 @@ parseLocation location =
 
         Nothing ->
             NotFoundRoute
+
+
+routeToString : Route -> String
+routeToString route =
+    case route of
+        HomeRoute ->
+            ""
+
+        DatabasesRoute ->
+            "/databases"
+
+        NewConnectionRoute ->
+            "/connections/new"
+
+        InActiveConnectionsRoute ->
+            "/connections/inactive"
+
+        NotFoundRoute ->
+            "/not-found"

@@ -17,6 +17,7 @@ import Routing
 import Database
 import DbSessions
 import Session
+import Ports
 
 
 type alias Model =
@@ -145,6 +146,9 @@ commandsForRoute route currentSession =
                 Maybe.Nothing ->
                     Cmd.none
 
+        Routing.InActiveConnectionsRoute ->
+            Cmd.none
+
         Routing.NewConnectionRoute ->
             Cmd.none
 
@@ -176,6 +180,14 @@ header model =
         ]
 
 
+inActiveSessionsView : Model -> Html Msg
+inActiveSessionsView model =
+    Html.map SessionMsg
+        (model.sessionModel.inActiveDbSessions
+            |> Session.sessionListView model.sessionModel
+        )
+
+
 mainView : Model -> Html Msg
 mainView model =
     div
@@ -189,10 +201,6 @@ mainView model =
                 div []
                     [ Html.map SessionMsg
                         (model.sessionModel.activeDbSessions
-                            |> Session.sessionListView model.sessionModel
-                        )
-                    , Html.map SessionMsg
-                        (model.sessionModel.inActiveDbSessions
                             |> Session.sessionListView model.sessionModel
                         )
                     , Html.map SessionMsg (Session.connectionFormView model.sessionModel)
@@ -256,7 +264,8 @@ openDrawerList { sessionModel } =
                     )
     in
         Html.div []
-            ([ Html.div [ Html.Events.onClick (NewUrl "new-connection") ]
+            ([ linkTo Routing.NewConnectionRoute
+                []
                 [ (drawerItem { iconName = "add", iconType = Styles.MaterialIcon }
                     (text "New connection")
                   )
@@ -405,26 +414,35 @@ drawerHeader title subTitle model =
             ]
 
 
+linkTo : Routing.Route -> List (Html.Attribute Msg) -> List (Html.Html Msg) -> Html Msg
+linkTo route attributes children =
+    Html.a ([ Html.Events.onClick (NewUrl (Routing.routeToString route)) ] ++ attributes) children
+
+
 closedDrawerList : Model -> Html Msg
 closedDrawerList model =
     Html.div []
-        [ Html.div [ Html.Events.onClick (NewUrl "databases") ]
+        [ linkTo Routing.DatabasesRoute
+            []
             [ drawerItem
                 { iconName = "database"
                 , iconType = Styles.CustomMaterialIcon
                 }
                 (text "Databases")
             ]
-        , drawerItem
-            { iconName = "server-off"
-            , iconType = Styles.CustomMaterialIcon
-            }
-            (text "Inactive connections")
+        , linkTo Routing.InActiveConnectionsRoute
+            []
+            [ drawerItem
+                { iconName = "server-off"
+                , iconType = Styles.CustomMaterialIcon
+                }
+                (text "Inactive connections")
+            ]
         ]
 
 
-leftDrawer : Model -> Session.CurrentSession -> Html Msg
-leftDrawer model currentSession =
+leftDrawer : Model -> Html Msg
+leftDrawer model =
     AppLayout.drawer [ attribute "slot" "drawer" ]
         (Maybe.map
             (\currentSession ->
@@ -453,8 +471,12 @@ viewPage model =
             Database.view model.databaseModel model.sessionModel
                 |> Html.map DatabaseMsg
 
+        Routing.InActiveConnectionsRoute ->
+            inActiveSessionsView model
+
         Routing.NewConnectionRoute ->
-            notFoundView
+            Session.connectionFormView model.sessionModel
+                |> Html.map SessionMsg
 
         Routing.NotFoundRoute ->
             notFoundView
@@ -464,8 +486,7 @@ view : Model -> Html Msg
 view model =
     div []
         [ AppLayout.drawerLayout []
-            [ (Maybe.map (\currentSession -> leftDrawer model currentSession) model.sessionModel.currentSession)
-                |> Maybe.withDefault (div [] [])
+            [ leftDrawer model
             , AppLayout.headerLayout []
                 [ header model
                 , viewPage model
