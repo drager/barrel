@@ -383,7 +383,7 @@ validation =
 initialFields : DbSessions.Connection -> List ( String, Field )
 initialFields connectionInfo =
     [ ( "host", Field.string connectionInfo.host )
-    , ( "port", Field.string (connectionInfo.portNumber |> toString) )
+    , ( "portNumber", Field.string (connectionInfo.portNumber |> toString) )
     , ( "username", Field.string connectionInfo.username )
     , ( "database", Field.string connectionInfo.database )
     ]
@@ -555,7 +555,7 @@ reconnectionView failedSessionMaybe =
 
 sessionListItemView :
     Model
-    -> { sessionId : DbSessions.SessionId, connection : DbSessions.Connection }
+    -> CurrentSession
     -> Bool
     -> Int
     -> Html Msg
