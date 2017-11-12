@@ -112,7 +112,10 @@ init =
       , inActiveDbSessions = Dict.empty
       , currentSession = Nothing
       }
-    , Ports.getItemInSessionStorage dbSessionsStorageKey
+    , Cmd.batch
+        [ Ports.getItemInSessionStorage dbSessionsStorageKey
+        , Ports.getItemInLocalStorage dbSessionsStorageKey
+        ]
     )
 
 
@@ -586,14 +589,6 @@ sessionListItemView model { sessionId, connection } active index =
                             )
                             [ text "Reconnect"
                             ]
-
-                        -- , case
-                        --     getFailedMaybe failedSessionMaybe
-                        --   of
-                        --     Just _ ->
-                        --         connectionDialog model
-                        --     Nothing ->
-                        --         div [] []
                         ]
                   else
                     Paper.button
