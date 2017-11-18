@@ -4,6 +4,7 @@ import Css exposing (asPairs, px)
 import Html exposing (Html, Attribute, div)
 import Html.Attributes exposing (attribute)
 import WebComponents.Iron as Iron
+import WebComponents.Paper as Paper
 
 
 styles : List Css.Style -> Attribute msg
@@ -67,3 +68,24 @@ body2 attributes children =
             ++ attributes
         )
         children
+
+
+centeredSpinner : List (Html.Attribute msg) -> List (Html.Html msg) -> Html.Html msg
+centeredSpinner attributes children =
+    div
+        ([ styles
+            [ Css.displayFlex
+            , (Css.justifyContent (Css.center))
+            ]
+         ]
+            ++ attributes
+        )
+        [ Paper.spinner
+            [ styles
+                [ Css.width (Css.px 48)
+                , Css.height (Css.px 48)
+                ]
+            , attribute "active" "true"
+            ]
+            children
+        ]

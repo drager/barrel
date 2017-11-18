@@ -51,3 +51,8 @@ dialog =
 input : List (Html.Attribute msg) -> List (Html msg) -> Html msg
 input =
     paper "input"
+
+
+spinner : List (Html.Attribute msg) -> List (Html msg) -> Html msg
+spinner =
+    paper "spinner"
