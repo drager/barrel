@@ -23,7 +23,14 @@ import WebComponents.Paper as Paper
 
 
 type alias Databases =
-    Dict DbSessions.SessionId (List Database)
+    Dict DbSessions.SessionId RemoteDatabases
+
+
+type RemoteDatabases
+    = Ready
+    | Fetching
+    | Success (List Database)
+    | Error Http.Error
 
 
 type alias Database =
@@ -48,19 +55,29 @@ init =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        GetDatabases sessionId (Ok databases) ->
+        GetDatabases sessionId (Result.Ok databases) ->
             ( { model
                 | databases =
-                    Dict.insert
+                    (Dict.insert
                         sessionId
-                        databases
-                        model.databases
+                        (Success databases)
+                        Dict.empty
+                    )
               }
             , Cmd.none
             )
 
-        GetDatabases _ (Err _) ->
-            ( model, Cmd.none )
+        GetDatabases sessionId (Result.Err err) ->
+            ( { model
+                | databases =
+                    (Dict.insert
+                        sessionId
+                        (Error err)
+                        Dict.empty
+                    )
+              }
+            , Cmd.none
+            )
 
 
 decodeDatabase : Decode.Decoder Database
@@ -98,17 +115,23 @@ getDatabases sessionId =
         (sessionIdRequest sessionId (getApiUrl ++ "/databases") (Decode.list decodeDatabase))
 
 
-listDatabasesView : Model -> Maybe Session.CurrentSession -> Html Msg
-listDatabasesView model currentSession =
-    div [ styles [ Css.flex (Css.int 1) ], attribute "role" "listbox" ]
-        (Maybe.andThen
-            (\{ sessionId } ->
-                Dict.get sessionId model.databases
-            )
-            currentSession
-            |> Maybe.withDefault []
-            |> List.map databaseListItemView
-        )
+listDatabasesView : RemoteDatabases -> Maybe Session.CurrentSession -> Html Msg
+listDatabasesView database currentSession =
+    case database of
+        Ready ->
+            div [] [ text "Init" ]
+
+        Fetching ->
+            Styles.centeredSpinner [ styles [ Css.paddingTop (Css.px 16) ] ] []
+
+        Success databases ->
+            div [ styles [ Css.flex (Css.int 1) ], attribute "role" "listbox" ]
+                (databases
+                    |> List.map databaseListItemView
+                )
+
+        Error err ->
+            div [] [ text "Failed to get data" ]
 
 
 databaseListItemView : Database -> Html Msg
@@ -127,4 +150,15 @@ databaseListItemView database =
 
 view : Model -> Session.Model -> Html Msg
 view model sessionModel =
-    Html.div [] [ listDatabasesView model sessionModel.currentSession ]
+    let
+        remoteDatabases : RemoteDatabases
+        remoteDatabases =
+            (Maybe.andThen
+                (\{ sessionId } ->
+                    Dict.get sessionId model.databases
+                )
+                sessionModel.currentSession
+                |> Maybe.withDefault Fetching
+            )
+    in
+        Html.div [] [ listDatabasesView remoteDatabases sessionModel.currentSession ]
