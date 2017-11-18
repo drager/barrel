@@ -21,6 +21,7 @@ import 'paper-spinner/paper-spinner.html'
 import 'paper-styles/color.html'
 import 'font-roboto/roboto.html'
 import 'paper-styles/typography.html'
+import 'paper-fab/paper-fab.html'
 import {Main} from './Main.elm'
 
 var app = Main.embed(document.getElementById('app'))

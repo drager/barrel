@@ -56,3 +56,8 @@ input =
 spinner : List (Html.Attribute msg) -> List (Html msg) -> Html msg
 spinner =
     paper "spinner"
+
+
+fab : List (Html.Attribute msg) -> List (Html msg) -> Html msg
+fab =
+    paper "fab"

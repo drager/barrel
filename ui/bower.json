@@ -21,6 +21,7 @@
     "app-layout": "PolymerElements/app-layout#^2.0.4",
     "paper-drawer": "Collaborne/paper-drawer#^2.0.2",
     "paper-input": "PolymerElements/paper-input#^2.0.2",
-    "paper-spinner": "PolymerElements/paper-spinner#^2.0.0"
+    "paper-spinner": "PolymerElements/paper-spinner#^2.0.0",
+    "paper-fab": "PolymerElements/paper-fab#^2.0.0"
   }
 }
