@@ -156,7 +156,7 @@ commandsForRoute route currentSession =
             Cmd.none
 
 
-header : Model -> Html msg
+header : Model -> Html Msg
 header model =
     AppLayout.header
         [ attribute "shadow" "true"
@@ -172,10 +172,15 @@ header model =
                 ]
                 []
             , Html.div
-                [ styles [ Css.paddingLeft (Css.px 16) ]
-                , attribute "main-title" "true"
+                [ styles [ Css.paddingLeft (Css.px 16) ] ]
+                [ linkTo Routing.HomeRoute
+                    []
+                    [ Html.div
+                        [ attribute "main-title" "true"
+                        ]
+                        [ text "Database manager" ]
+                    ]
                 ]
-                [ text "Database manager" ]
             ]
         ]
 
@@ -416,7 +421,13 @@ drawerHeader title subTitle model =
 
 linkTo : Routing.Route -> List (Html.Attribute Msg) -> List (Html.Html Msg) -> Html Msg
 linkTo route attributes children =
-    Html.a ([ Html.Events.onClick (NewUrl (Routing.routeToString route)) ] ++ attributes) children
+    Html.a
+        ([ Html.Events.onClick (NewUrl (Routing.routeToString route))
+         , styles [ Css.cursor (Css.pointer) ]
+         ]
+            ++ attributes
+        )
+        children
 
 
 closedDrawerList : Model -> Html Msg

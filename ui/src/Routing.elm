@@ -36,7 +36,7 @@ routeToString : Route -> String
 routeToString route =
     case route of
         HomeRoute ->
-            ""
+            "/"
 
         DatabasesRoute ->
             "/databases"
