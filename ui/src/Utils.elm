@@ -1,13 +1,28 @@
-module Utils exposing (..)
+module Utils
+    exposing
+        ( paperTextInput
+        , paperNumberInput
+        , paperPasswordInput
+        , inputError
+        , onPreventDefaultClick
+        )
 
 import Html exposing (Html)
 import Html.Attributes exposing (attribute, type_, value)
-import Html.Events exposing (onInput, onFocus, onBlur)
+import Html.Events
+    exposing
+        ( onInput
+        , onFocus
+        , onBlur
+        , onWithOptions
+        , defaultOptions
+        )
 import Form exposing (Form)
 import Form.Field
 import Form exposing (Form, Msg, FieldState, Msg(Input, Focus, Blur), InputType(..))
 import Form.Field as Field exposing (Field, FieldValue(..))
 import WebComponents.Paper as Paper
+import Json.Decode
 
 
 type alias Input e a =
@@ -55,3 +70,32 @@ inputError message =
         ]
     else
         []
+
+
+{-| Based on: <https://github.com/elm-lang/navigation/issues/13>
+-}
+onPreventDefaultClick : msg -> Html.Attribute msg
+onPreventDefaultClick message =
+    onWithOptions "click"
+        { defaultOptions | preventDefault = True }
+        (preventDefault2
+            |> Json.Decode.andThen (maybePreventDefault message)
+        )
+
+
+preventDefault2 : Json.Decode.Decoder Bool
+preventDefault2 =
+    Json.Decode.map2
+        (\a -> \b -> not (a || b))
+        (Json.Decode.field "ctrlKey" Json.Decode.bool)
+        (Json.Decode.field "metaKey" Json.Decode.bool)
+
+
+maybePreventDefault : msg -> Bool -> Json.Decode.Decoder msg
+maybePreventDefault msg preventDefault =
+    case preventDefault of
+        True ->
+            Json.Decode.succeed msg
+
+        False ->
+            Json.Decode.fail "Normal link"

@@ -8,6 +8,7 @@ import Dict exposing (Dict)
 import WebComponents.AppLayout as AppLayout
 import WebComponents.Paper as Paper
 import Navigation
+import Utils
 
 
 -- Own modules
@@ -17,7 +18,6 @@ import Routing
 import Database
 import DbSessions
 import Session
-import Ports
 
 
 type alias Model =
@@ -30,7 +30,7 @@ type alias Model =
 
 type Msg
     = OnLocationChange Navigation.Location
-    | NewUrl String
+    | NewRoute Routing.Route
     | DatabaseMsg Database.Msg
     | SessionMsg Session.Msg
     | ToggleDrawer
@@ -82,8 +82,8 @@ update msg model =
             in
                 ( { model | route = route }, commands )
 
-        NewUrl url ->
-            ( model, Navigation.newUrl url )
+        NewRoute route ->
+            model ! [ Navigation.newUrl (Routing.routeToString route) ]
 
         SessionMsg sessionMsg ->
             let
@@ -174,7 +174,11 @@ header model =
             , Html.div
                 [ styles [ Css.paddingLeft (Css.px 16) ] ]
                 [ linkTo Routing.HomeRoute
-                    []
+                    [ styles
+                        [ Css.color (Css.hex "#FFFFFF")
+                        , Css.textDecoration (Css.none)
+                        ]
+                    ]
                     [ Html.div
                         [ attribute "main-title" "true"
                         ]
@@ -422,8 +426,9 @@ drawerHeader title subTitle model =
 linkTo : Routing.Route -> List (Html.Attribute Msg) -> List (Html.Html Msg) -> Html Msg
 linkTo route attributes children =
     Html.a
-        ([ Html.Events.onClick (NewUrl (Routing.routeToString route))
-         , styles [ Css.cursor (Css.pointer) ]
+        ([ styles [ Css.cursor (Css.pointer) ]
+         , Html.Attributes.href (Routing.routeToString route)
+         , Utils.onPreventDefaultClick (NewRoute route)
          ]
             ++ attributes
         )
@@ -452,8 +457,8 @@ closedDrawerList model =
         ]
 
 
-leftDrawer : Model -> Html Msg
-leftDrawer model =
+leftDrawer : Model -> Maybe Session.CurrentSession -> Html Msg
+leftDrawer model currentSession =
     AppLayout.drawer [ attribute "slot" "drawer" ]
         (Maybe.map
             (\currentSession ->
@@ -462,7 +467,7 @@ leftDrawer model =
                     (text (Session.connectionString currentSession.connection))
                     model
             )
-            model.sessionModel.currentSession
+            currentSession
             |> Maybe.withDefault ([])
         )
 
@@ -497,7 +502,7 @@ view : Model -> Html Msg
 view model =
     div []
         [ AppLayout.drawerLayout []
-            [ leftDrawer model
+            [ leftDrawer model model.sessionModel.currentSession
             , AppLayout.headerLayout []
                 [ header model
                 , viewPage model
