@@ -20,6 +20,7 @@ import Json.Decode as Decode
 import DbSessions
 import Session
 import WebComponents.Paper as Paper
+import Routing
 
 
 type alias Databases =
@@ -45,6 +46,7 @@ type alias Model =
 
 type Msg
     = GetDatabases DbSessions.SessionId (Result Http.Error (List Database))
+    | RoutingMsg Routing.Msg
 
 
 init : ( Model, Cmd Msg )
@@ -52,8 +54,8 @@ init =
     ( { databases = Dict.empty }, Cmd.none )
 
 
-update : Msg -> Model -> ( Model, Cmd Msg )
-update msg model =
+update : Msg -> Model -> Routing.Model -> ( Model, Cmd Msg )
+update msg model routingModel =
     case msg of
         GetDatabases sessionId (Result.Ok databases) ->
             ( { model
@@ -78,6 +80,13 @@ update msg model =
               }
             , Cmd.none
             )
+
+        RoutingMsg routingMsg ->
+            let
+                ( _, routingCmd ) =
+                    Routing.update routingMsg routingModel
+            in
+                ( model, Cmd.map RoutingMsg routingCmd )
 
 
 decodeDatabase : Decode.Decoder Database
@@ -125,10 +134,22 @@ listDatabasesView database currentSession =
             Styles.centeredSpinner [ styles [ Css.paddingTop (Css.px 16) ] ] []
 
         Success databases ->
-            div [ styles [ Css.flex (Css.int 1) ], attribute "role" "listbox" ]
-                (databases
-                    |> List.map databaseListItemView
-                )
+            div [ styles [ Css.flex (Css.int 1) ] ]
+                [ div [ attribute "role" "listbox" ]
+                    (databases
+                        |> List.map databaseListItemView
+                    )
+                , (Routing.linkTo Routing.NewDatabaseRoute
+                    []
+                    [ Paper.fab
+                        [ styles [ Css.backgroundColor (Css.hex "#cddc39") ]
+                        , attribute "icon" "add"
+                        ]
+                        []
+                    ]
+                  )
+                    |> Html.map RoutingMsg
+                ]
 
         Error err ->
             div [] [ text "Failed to get data" ]

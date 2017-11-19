@@ -8,7 +8,6 @@ import Dict exposing (Dict)
 import WebComponents.AppLayout as AppLayout
 import WebComponents.Paper as Paper
 import Navigation
-import Utils
 
 
 -- Own modules
@@ -21,18 +20,18 @@ import Session
 
 
 type alias Model =
-    { route : Routing.Route
+    { drawerState : DrawerState
     , databaseModel : Database.Model
     , sessionModel : Session.Model
-    , drawerState : DrawerState
+    , routingModel : Routing.Model
     }
 
 
 type Msg
     = OnLocationChange Navigation.Location
-    | NewRoute Routing.Route
     | DatabaseMsg Database.Msg
     | SessionMsg Session.Msg
+    | RoutingMsg Routing.Msg
     | ToggleDrawer
     | SetCurrentSession Session.CurrentSession
 
@@ -51,14 +50,14 @@ init location =
         ( databaseModel, databaseCmd ) =
             Database.init
 
-        route =
-            Routing.parseLocation location
+        ( routingModel, routingCmd ) =
+            Routing.init location
 
         newModel =
-            { route = route
-            , databaseModel = databaseModel
+            { databaseModel = databaseModel
             , sessionModel = sessionModel
             , drawerState = DrawerClosed
+            , routingModel = routingModel
             }
     in
         ( newModel
@@ -77,13 +76,32 @@ update msg model =
                 route =
                     Routing.parseLocation location
 
+                oldRoutingModel =
+                    model.routingModel
+
+                newRoutingModel =
+                    ({ oldRoutingModel | route = route })
+
+                newModel =
+                    ({ model | routingModel = newRoutingModel })
+
                 commands =
                     commandsForRoute route model.sessionModel.currentSession
             in
-                ( { model | route = route }, commands )
+                ( newModel, commands )
 
-        NewRoute route ->
-            model ! [ Navigation.newUrl (Routing.routeToString route) ]
+        RoutingMsg routingMsg ->
+            let
+                ( updatedRoutingModel, routingCmd ) =
+                    Routing.update routingMsg model.routingModel
+
+                commands =
+                    Cmd.batch
+                        [ Cmd.map RoutingMsg routingCmd
+                        , commandsForRoute updatedRoutingModel.route model.sessionModel.currentSession
+                        ]
+            in
+                ( { model | routingModel = updatedRoutingModel }, commands )
 
         SessionMsg sessionMsg ->
             let
@@ -93,7 +111,7 @@ update msg model =
                 commands =
                     Cmd.batch
                         [ Cmd.map SessionMsg sessionCmd
-                        , commandsForRoute model.route updatedSessionModel.currentSession
+                        , commandsForRoute model.routingModel.route updatedSessionModel.currentSession
                         ]
             in
                 ( { model | sessionModel = updatedSessionModel }, commands )
@@ -101,7 +119,7 @@ update msg model =
         DatabaseMsg databaseMsg ->
             let
                 ( updatedDatabaseModel, databaseCmd ) =
-                    Database.update databaseMsg model.databaseModel
+                    Database.update databaseMsg model.databaseModel model.routingModel
             in
                 ( { model | databaseModel = updatedDatabaseModel }, Cmd.map DatabaseMsg databaseCmd )
 
@@ -152,6 +170,9 @@ commandsForRoute route currentSession =
         Routing.NewConnectionRoute ->
             Cmd.none
 
+        Routing.NewDatabaseRoute ->
+            Cmd.none
+
         Routing.NotFoundRoute ->
             Cmd.none
 
@@ -173,7 +194,7 @@ header model =
                 []
             , Html.div
                 [ styles [ Css.paddingLeft (Css.px 16) ] ]
-                [ linkTo Routing.HomeRoute
+                [ Routing.linkTo Routing.HomeRoute
                     [ styles
                         [ Css.color (Css.hex "#FFFFFF")
                         , Css.textDecoration (Css.none)
@@ -187,6 +208,7 @@ header model =
                 ]
             ]
         ]
+        |> Html.map RoutingMsg
 
 
 inActiveSessionsView : Model -> Html Msg
@@ -273,12 +295,13 @@ openDrawerList { sessionModel } =
                     )
     in
         Html.div []
-            ([ linkTo Routing.NewConnectionRoute
+            ([ Routing.linkTo Routing.NewConnectionRoute
                 []
                 [ (drawerItem { iconName = "add", iconType = Styles.MaterialIcon }
                     (text "New connection")
                   )
                 ]
+                |> Html.map RoutingMsg
              ]
                 |> List.append
                     (Dict.toList
@@ -423,22 +446,10 @@ drawerHeader title subTitle model =
             ]
 
 
-linkTo : Routing.Route -> List (Html.Attribute Msg) -> List (Html.Html Msg) -> Html Msg
-linkTo route attributes children =
-    Html.a
-        ([ styles [ Css.cursor (Css.pointer) ]
-         , Html.Attributes.href (Routing.routeToString route)
-         , Utils.onPreventDefaultClick (NewRoute route)
-         ]
-            ++ attributes
-        )
-        children
-
-
 closedDrawerList : Model -> Html Msg
 closedDrawerList model =
-    Html.div []
-        [ linkTo Routing.DatabasesRoute
+    (Html.div []
+        [ Routing.linkTo Routing.DatabasesRoute
             []
             [ drawerItem
                 { iconName = "database"
@@ -446,7 +457,7 @@ closedDrawerList model =
                 }
                 (text "Databases")
             ]
-        , linkTo Routing.InActiveConnectionsRoute
+        , Routing.linkTo Routing.InActiveConnectionsRoute
             []
             [ drawerItem
                 { iconName = "server-off"
@@ -455,6 +466,8 @@ closedDrawerList model =
                 (text "Inactive connections")
             ]
         ]
+    )
+        |> Html.map RoutingMsg
 
 
 leftDrawer : Model -> Maybe Session.CurrentSession -> Html Msg
@@ -479,7 +492,7 @@ notFoundView =
 
 viewPage : Model -> Html Msg
 viewPage model =
-    case model.route of
+    case model.routingModel.route of
         Routing.HomeRoute ->
             mainView model
 
@@ -491,6 +504,10 @@ viewPage model =
             inActiveSessionsView model
 
         Routing.NewConnectionRoute ->
+            Session.connectionFormView model.sessionModel
+                |> Html.map SessionMsg
+
+        Routing.NewDatabaseRoute ->
             Session.connectionFormView model.sessionModel
                 |> Html.map SessionMsg
 
