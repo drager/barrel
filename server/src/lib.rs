@@ -1,5 +1,6 @@
 #![feature(plugin)]
 #![plugin(rocket_codegen)]
+#![feature(const_atomic_bool_new)]
 
 extern crate postgres;
 extern crate r2d2;

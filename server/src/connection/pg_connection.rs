@@ -3,7 +3,7 @@ use postgres::params::ConnectParams;
 use connection::DatabaseConnection;
 use r2d2_postgres::{PostgresConnectionManager, TlsMode as R2D2TlsMode};
 use r2d2::{self, PooledConnection};
-use connection::Database;
+use connection::{Database, Table};
 
 
 #[derive(Serialize)]
@@ -25,8 +25,9 @@ impl DatabaseConnection for PgDatabaseConnection {
     //     PgConnection::connect(config, TlsMode::None).map_err(PgError::from)
     // }
     /// Initializes a database pool.
-    fn init_db_pool(database_url: Self::ConnectConfig)
-                    -> Result<Self::Pool, Self::ConnectionError> {
+    fn init_db_pool(
+        database_url: Self::ConnectConfig,
+    ) -> Result<Self::Pool, Self::ConnectionError> {
         let config = r2d2::Config::default();
         // Do TlsMode::None for now...
         let manager = PostgresConnectionManager::new(database_url, R2D2TlsMode::None).unwrap();
@@ -35,16 +36,62 @@ impl DatabaseConnection for PgDatabaseConnection {
 
     fn get_databases(db_conn: Self::Connection) -> Result<Vec<Database>, Self::ConnectionError> {
         db_conn
-                        .query("SELECT datname, oid FROM pg_database WHERE NOT datistemplate ORDER BY datname ASC",
-                               &[])
-                        .map(|rows| {
-                            rows.iter().map(|row| {
-                                Database {
-                                    name: row.get("datname"),
-                                    oid: row.get("oid"),
-                                }
-                            }).collect()
-                        }).map_err(PgError::from)
+            .query(
+                "SELECT datname, oid FROM pg_database WHERE NOT datistemplate ORDER BY datname ASC",
+                &[],
+            )
+            .map(|rows| {
+                rows.iter()
+                    .map(|row| {
+                        Database {
+                            name: row.get("datname"),
+                            oid: row.get("oid"),
+                        }
+                    })
+                    .collect()
+            })
+            .map_err(PgError::from)
+    }
+
+    fn get_tables(db_conn: Self::Connection) -> Result<Vec<Table>, Self::ConnectionError> {
+        db_conn
+            .query(
+                "SELECT
+                    n.nspname as \"schema\",
+                    c.relname as \"name\",
+                CASE c.relkind
+                    WHEN 'r' THEN 'table'
+                    WHEN 'v' THEN 'view'
+                    WHEN 'm' THEN 'materialized view'
+                    WHEN 'i' THEN 'index'
+                    WHEN 'S' THEN 'sequence'
+                    WHEN 's' THEN 'special'
+                    WHEN 'f' THEN 'foreign table'
+                END as \"type\",
+                    pg_catalog.pg_get_userbyid(c.relowner) as \"owner\"
+                FROM pg_catalog.pg_class c
+                    LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                WHERE c.relkind IN ('r','')
+                    AND n.nspname <> 'pg_catalog'
+                    AND n.nspname <> 'information_schema'
+                    AND n.nspname !~ '^pg_toast'
+                    AND pg_catalog.pg_table_is_visible(c.oid)
+                ORDER BY 1,2;
+                ",
+                &[],
+            )
+            .map(|rows| {
+                rows.iter()
+                    .map(|row| {
+                        Table {
+                            name: row.get("name"),
+                            schema: row.get("schema"),
+                            owner: row.get("owner"),
+                        }
+                    })
+                    .collect()
+            })
+            .map_err(PgError::from)
     }
 }
 

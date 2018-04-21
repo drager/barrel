@@ -7,9 +7,9 @@ use postgres::params::Host;
 use postgres;
 use rocket::{response, Request};
 use api::db_pool::{DbSessions, LockedSession, SessionId};
-use connection::{pg_connection, Database};
+use connection::{pg_connection, Database, Table};
 use uuid::Uuid;
-use std::sync::{RwLock, PoisonError};
+use std::sync::{PoisonError, RwLock};
 
 pub mod db_pool;
 
@@ -33,14 +33,28 @@ enum Status {
     Ok,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DataResponse<T> {
+    data: T,
+    errors: Option<Vec<ErrorResponse>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ErrorResponse {
+    message: String,
+}
+
 #[post("/connect", data = "<connection_information>")]
-pub fn connect(connection_information: Json<ConnectionInformation>,
-               state_session: State<LockedSession>)
-               -> Result<Json<ConnectionResponse>, ApiError> {
+pub fn connect(
+    connection_information: Json<ConnectionInformation>,
+    state_session: State<LockedSession>,
+) -> Result<Json<ConnectionResponse>, ApiError> {
     let params = ConnectParams::builder()
         .port(connection_information.port)
-        .user(&connection_information.username,
-              Some(&connection_information.password))
+        .user(
+            &connection_information.username,
+            Some(&connection_information.password),
+        )
         .database(&connection_information.database)
         .build(Host::Tcp(connection_information.host.to_owned()));
 
@@ -55,9 +69,9 @@ pub fn connect(connection_information: Json<ConnectionInformation>,
                     let session_id = Uuid::new_v4();
                     session.add(session_id, connection);
                     Ok(Json(ConnectionResponse {
-                                status: Status::Ok,
-                                session_id: session_id,
-                            }))
+                        status: Status::Ok,
+                        session_id: session_id,
+                    }))
                 }
                 Err(_) => Err(ApiError::CouldNotWriteDbSession),
             }
@@ -65,39 +79,64 @@ pub fn connect(connection_information: Json<ConnectionInformation>,
 }
 
 #[post("/connection/retry", data = "<session_id>")]
-pub fn connection_retry(session_id: Json<SessionId>,
-                        db_sessions: DbSessions)
-                        -> Result<Json<ConnectionResponse>, ApiError> {
+pub fn connection_retry(
+    session_id: Json<SessionId>,
+    db_sessions: DbSessions,
+) -> Result<Json<ConnectionResponse>, ApiError> {
     // TODO: Break this out into a function? Maybe on the Struct?
     db_sessions
         .get(&*session_id)
         .ok_or(ApiError::NoDbSession)
         .and_then(|db_session| match db_session.get() {
-                      Ok(_db_conn) => {
-                          Ok(Json(ConnectionResponse {
-                                      session_id: session_id.clone(),
-                                      status: Status::Ok,
-                                  }))
-                      }
-                      Err(_) => Err(ApiError::NoDbSession),
-                  })
+            Ok(_db_conn) => Ok(Json(ConnectionResponse {
+                session_id: session_id.clone(),
+                status: Status::Ok,
+            })),
+            Err(_) => Err(ApiError::NoDbSession),
+        })
 }
 
 #[get("/databases")]
-pub fn get_databases(session_id: SessionId,
-                     db_sessions: DbSessions)
-                     -> Result<Json<Vec<Database>>, ApiError> {
+pub fn get_databases(
+    session_id: SessionId,
+    db_sessions: DbSessions,
+) -> Result<Json<Vec<Database>>, ApiError> {
     db_sessions
         .get(&*session_id)
         .ok_or(ApiError::NoDbSession)
         .and_then(|db_session| match db_session.get() {
-                      Ok(db_conn) => {
-                          PgDatabaseConnection::get_databases(db_conn)
-                              .map(Json)
-                              .map_err(ApiError::from)
-                      }
-                      Err(_) => Err(ApiError::NoDbSession),
-                  })
+            Ok(db_conn) => PgDatabaseConnection::get_databases(db_conn)
+                .map(Json)
+                .map_err(ApiError::from),
+            Err(_) => Err(ApiError::NoDbSession),
+        })
+}
+
+#[get("/databases/<database_name>/tables")]
+pub fn get_tables(
+    session_id: SessionId,
+    db_sessions: DbSessions,
+    database_name: String,
+) -> Result<Json<DataResponse<Vec<Table>>>, ApiError> {
+    db_sessions
+        .get(&*session_id)
+        .ok_or(ApiError::NoDbSession)
+        .and_then(|db_session| match db_session.get() {
+            Ok(db_conn) => {
+                println!("db_session {:?}", db_session);
+                println!("dbconn{:?}", db_conn);
+                PgDatabaseConnection::get_tables(db_conn).map_err(ApiError::from)
+            }
+            Err(_) => Err(ApiError::NoDbSession),
+        })
+        .map(|table| format_data_as_json(table, None))
+}
+
+fn format_data_as_json<T>(data: T, errors: Option<Vec<ErrorResponse>>) -> Json<DataResponse<T>> {
+    Json(DataResponse {
+        data: data,
+        errors: errors,
+    })
 }
 
 pub fn json_error(reason: &str) -> Json {

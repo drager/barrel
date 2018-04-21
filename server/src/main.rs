@@ -1,5 +1,6 @@
 #![feature(plugin)]
 #![plugin(rocket_codegen)]
+#![feature(const_atomic_bool_new)]
 
 extern crate database_manager;
 extern crate rocket;
@@ -30,7 +31,12 @@ fn main() {
     rocket::ignite()
         .mount(
             "/",
-            routes![api::connect, api::get_databases, api::connection_retry],
+            routes![
+                api::connect,
+                api::get_databases,
+                api::connection_retry,
+                api::get_tables
+            ],
         )
         .manage(init_sessions())
         .attach(options)

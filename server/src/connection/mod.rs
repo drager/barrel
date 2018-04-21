@@ -11,12 +11,20 @@ pub trait DatabaseConnection {
     // fn connect(config: Self::ConnectConfig) -> Result<Self::Connection, Self::ConnectionError>;
     fn init_db_pool(config: Self::ConnectConfig) -> Result<Self::Pool, Self::ConnectionError>;
     fn get_databases(db_conn: Self::Connection) -> Result<Vec<Database>, Self::ConnectionError>;
+    fn get_tables(db_conn: Self::Connection) -> Result<Vec<Table>, Self::ConnectionError>;
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Database {
     pub name: String,
     pub oid: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Table {
+    pub name: String,
+    pub schema: String,
+    pub owner: String,
 }
 
 #[allow(dead_code)]
