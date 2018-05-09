@@ -81,8 +81,8 @@ pub type LockedSession = RwLock<DbSessions>;
 pub struct SessionId(pub Uuid);
 
 impl SessionId {
-    pub fn is_valid(key: &str) -> Result<Uuid, uuid::ParseError> {
-        Uuid::parse_str(key)
+    pub fn is_valid(key: &str) -> Result<SessionId, uuid::ParseError> {
+        Uuid::parse_str(key).map(SessionId)
     }
 }
 

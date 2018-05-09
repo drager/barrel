@@ -10,20 +10,21 @@ extern crate serde_json;
 use actix::{Addr, Syn, SyncArbiter};
 use actix_web::pred::Predicate;
 use actix_web::server;
+use actix_web::http::header;
 use actix_web::{error, http, middleware, test, App, AsyncResponder, Error, FutureResponse,
                 HttpMessage, HttpRequest, HttpResponse, Json, Responder, State};
 use database_manager::connection::db::{DbExecutor, GetSession};
-use database_manager::connection::pg_connection::PgError;
-use database_manager::connection::{init_sessions, ConnectionData, SessionId};
+use database_manager::connection::pg_connection::{PgDatabaseConnection, PgError};
+use database_manager::connection::{init_sessions, ConnectionData, DatabaseConnection, SessionId};
 use futures::Future;
 use std::env;
 
-struct AppState {
+pub struct AppState {
     db: Addr<Syn, DbExecutor>,
 }
 
 #[derive(Debug)]
-enum ApiError {
+pub enum ApiError {
     InternalError,
     BadClientData,
     Timeout,
@@ -59,17 +60,21 @@ const X_SESSION_HEADER: &str = "X-Session-Id";
 
 struct XSessionHeader;
 
+fn get_session_id_from_request<T>(request: &HttpRequest<T>) -> Option<SessionId> {
+    request
+        .headers()
+        .get(X_SESSION_HEADER)
+        .and_then(|id| id.to_str().ok())
+        .and_then(|session_id| SessionId::is_valid(session_id).ok())
+}
+
 impl<S: 'static> Predicate<S> for XSessionHeader {
     fn check(&self, req: &mut HttpRequest<S>) -> bool {
         println!("req {:?}", req);
 
-        req.headers()
-            .get(X_SESSION_HEADER)
-            .map(|id| id.to_str().unwrap_or(""))
-            .map_or(false, |session_id| match SessionId::is_valid(session_id) {
-                Ok(_key) => true,
-                Err(_) => false,
-            })
+        let valid = get_session_id_from_request(&req.clone()).map_or(false, |_| true);
+        println!("valid: {}", valid);
+        valid
         // req.headers().contains_key("X-Session-Id")
     }
 }
@@ -134,16 +139,53 @@ fn connect(
 }
 
 pub fn get_databases(
-    session_id: SessionId,
-    state: State<AppState>,
+    req: HttpRequest<AppState> // session_id: Json<SessionId>, // state: State<AppState>
 ) -> Result<Json<Vec<Database>>, ApiError> {
-    let a = state
-        .db
-        .send(GetSession(session_id))
-        .from_err()
-        .and_then(|res| res)
-        .responder();
-    Ok()
+    get_session_id_from_request(&req).map(|session_id| {
+        println!("GET SESS {:?}", session_id);
+        let future = req.state()
+            .db
+            .send(GetSession(session_id))
+            .from_err()
+            .map_err(|_err| Ok(HttpResponse::InternalServerError().into()))
+            .map(|res| {
+                res.map(|db_session| {
+                    db_session.get().map(|db_conn| {
+                        PgDatabaseConnection::get_databases(db_conn)
+                            .map(|databases| HttpResponse::Ok().json(databases))
+                    })
+                })
+            })
+            .responder();
+        // let future = req.state()
+        //     .db
+        //     .send(GetSession(session_id))
+        //     .from_err()
+        //     .and_then(|res| match res {
+        //         Ok(db_session) => match db_session.get() {
+        //             Ok(db_conn) => PgDatabaseConnection::get_databases(db_conn)
+        //                 .map(|databases| HttpResponse::Ok().json(databases)),
+
+        //             Err(err) => Ok(HttpResponse::InternalServerError().into()),
+        //         },
+        //         Err(err) => Ok(HttpResponse::InternalServerError().into()),
+        //     })
+        //     .responder();
+
+        future
+        // println!("S: {:?}", s);
+    });
+    // println!("req in route {:?}", req);
+    // println!("session_id in route {:?}", session_id);
+    // println!("session id {:?}", session_id);
+    // let a = state.db;
+    // let a = state
+    //     .db
+    //     .send(GetSession(session_id))
+    //     .from_err()
+    //     .and_then(|res| res)
+    //     .responder();
+    Ok(Json(vec![]))
     // db_sessions
     //     .get(&*session_id)
     //     .ok_or(ApiError::NoDbSession)
@@ -167,9 +209,7 @@ fn main() {
         App::with_state(AppState { db: addr.clone() })
             .middleware(middleware::Logger::default())
             .resource("/connect", |r| r.route().with2(connect))
-            .resource("/", |r| {
-                r.route().filter(XSessionHeader).with2(get_databases)
-            })
+            .resource("/", |r| r.route().filter(XSessionHeader).f(get_databases))
     }).bind("127.0.0.1:8000")
         .unwrap()
         .start();
