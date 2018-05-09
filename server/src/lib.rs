@@ -1,20 +1,16 @@
-#![feature(plugin)]
-#![plugin(rocket_codegen)]
-#![feature(const_atomic_bool_new)]
-
+extern crate actix;
+extern crate actix_web;
 extern crate postgres;
 extern crate r2d2;
 extern crate r2d2_postgres;
-extern crate rocket;
-extern crate rocket_contrib;
 #[macro_use]
 extern crate serde_derive;
 #[macro_use]
 extern crate serde_json;
 extern crate uuid;
 
-pub mod connection;
 pub mod api;
+pub mod connection;
 
 #[cfg(test)]
 mod tests {

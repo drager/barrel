@@ -1,17 +1,16 @@
+use connection::{ConnectionData, Database, DatabaseConnection, LockedSession, SessionId, Table};
+use postgres::params::{ConnectParams, Host};
 use postgres::{self, Connection as PgConnection, TlsMode};
-use postgres::params::ConnectParams;
-use connection::DatabaseConnection;
-use r2d2_postgres::{PostgresConnectionManager, TlsMode as R2D2TlsMode};
 use r2d2::{self, PooledConnection};
-use connection::{Database, Table};
-
+use r2d2_postgres::{PostgresConnectionManager, TlsMode as R2D2TlsMode};
+use uuid::Uuid;
 
 #[derive(Serialize)]
 pub struct PgDatabaseConnection {}
 
 impl DatabaseConnection for PgDatabaseConnection {
     type Connection = PooledConnection<PostgresConnectionManager>;
-    type ConnectionError = PgError;
+    type Error = PgError;
     type ConnectConfig = ConnectParams;
     // An alias to the type for a pool of Postgresql connections.
     type Pool = r2d2::Pool<PostgresConnectionManager>;
@@ -25,16 +24,49 @@ impl DatabaseConnection for PgDatabaseConnection {
     //     PgConnection::connect(config, TlsMode::None).map_err(PgError::from)
     // }
     /// Initializes a database pool.
-    fn init_db_pool(
-        database_url: Self::ConnectConfig,
-    ) -> Result<Self::Pool, Self::ConnectionError> {
-        let config = r2d2::Config::default();
+    fn init_db_pool(database_url: Self::ConnectConfig) -> Result<Self::Pool, Self::Error> {
         // Do TlsMode::None for now...
-        let manager = PostgresConnectionManager::new(database_url, R2D2TlsMode::None).unwrap();
-        r2d2::Pool::new(config, manager).map_err(PgError::from)
+        let manager = PostgresConnectionManager::new(database_url, R2D2TlsMode::None)?;
+        r2d2::Pool::new(manager).map_err(PgError::from)
     }
 
-    fn get_databases(db_conn: Self::Connection) -> Result<Vec<Database>, Self::ConnectionError> {
+    fn connect(
+        connection_data: ConnectionData,
+        db_session: &LockedSession,
+    ) -> Result<SessionId, Self::Error> {
+        let ConnectionData {
+            port,
+            username,
+            password,
+            database,
+            host,
+        } = connection_data;
+        let params = ConnectParams::builder()
+            .port(port)
+            .user(&username, Some(&password))
+            .database(&database)
+            .build(Host::Tcp(host.to_owned()));
+
+        PgDatabaseConnection::init_db_pool(params)
+            .map(|connection| match db_session.write() {
+                Ok(mut session) => {
+                    println!("session: {:?}", session);
+                    let session_id = Uuid::new_v4();
+                    session.add(session_id, connection);
+                    Ok(SessionId(session_id))
+                }
+                Err(err) => {
+                    println!("Err in connect: {:?}", err);
+                    Err(PgError::CouldNotWriteDbSession)
+                }
+            })
+            .map_err(|err| {
+                println!("ERR In init {:?}", err);
+                err
+            })?
+    }
+
+    fn get_databases(db_conn: Self::Connection) -> Result<Vec<Database>, Self::Error> {
         db_conn
             .query(
                 "SELECT datname, oid FROM pg_database WHERE NOT datistemplate ORDER BY datname ASC",
@@ -42,18 +74,16 @@ impl DatabaseConnection for PgDatabaseConnection {
             )
             .map(|rows| {
                 rows.iter()
-                    .map(|row| {
-                        Database {
-                            name: row.get("datname"),
-                            oid: row.get("oid"),
-                        }
+                    .map(|row| Database {
+                        name: row.get("datname"),
+                        oid: row.get("oid"),
                     })
                     .collect()
             })
             .map_err(PgError::from)
     }
 
-    fn get_tables(db_conn: Self::Connection) -> Result<Vec<Table>, Self::ConnectionError> {
+    fn get_tables(db_conn: Self::Connection) -> Result<Vec<Table>, Self::Error> {
         db_conn
             .query(
                 "SELECT
@@ -82,12 +112,10 @@ impl DatabaseConnection for PgDatabaseConnection {
             )
             .map(|rows| {
                 rows.iter()
-                    .map(|row| {
-                        Table {
-                            name: row.get("name"),
-                            schema: row.get("schema"),
-                            owner: row.get("owner"),
-                        }
+                    .map(|row| Table {
+                        name: row.get("name"),
+                        schema: row.get("schema"),
+                        owner: row.get("owner"),
                     })
                     .collect()
             })
@@ -98,7 +126,9 @@ impl DatabaseConnection for PgDatabaseConnection {
 #[derive(Debug)]
 pub enum PgError {
     PostgresError(postgres::Error),
-    PoolError(r2d2::InitializationError),
+    PoolError(r2d2::Error),
+    NoDbSession,
+    CouldNotWriteDbSession,
 }
 
 impl From<postgres::Error> for PgError {
@@ -107,8 +137,14 @@ impl From<postgres::Error> for PgError {
     }
 }
 
-impl From<r2d2::InitializationError> for PgError {
-    fn from(err: r2d2::InitializationError) -> PgError {
+impl From<r2d2::Error> for PgError {
+    fn from(err: r2d2::Error) -> PgError {
         PgError::PoolError(err)
     }
 }
+
+// impl From<NoDbSession> for PgError {
+//     fn from(err: NoDbSession) -> PgError {
+//         PgError::NoDbSession
+//     }
+// }
