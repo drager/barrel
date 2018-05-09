@@ -12,7 +12,7 @@ use actix_web::pred::Predicate;
 use actix_web::server;
 use actix_web::{error, http, middleware, test, App, AsyncResponder, Error, FutureResponse,
                 HttpMessage, HttpRequest, HttpResponse, Json, Responder, State};
-use database_manager::connection::db::DbExecutor;
+use database_manager::connection::db::{DbExecutor, GetSession};
 use database_manager::connection::pg_connection::PgError;
 use database_manager::connection::{init_sessions, ConnectionData, SessionId};
 use futures::Future;
@@ -114,7 +114,7 @@ fn connect(
                 match err {
                     PgError::PoolError(_pool_error) => {
                         let body = serde_json::to_string(&ErrorResponse {
-                            error: "Connection refused".to_owned(),
+                            error: "Connection refused".to_string(),
                         })?;
                         let response = HttpResponse::BadRequest()
                             .content_type("application/json")
@@ -133,21 +133,27 @@ fn connect(
     // HttpResponse::Ok().into()
 }
 
-// pub fn get_databases(
-//     session_id: SessionId,
-//     state: State<AppState>,
-// ) -> Result<Json<Vec<Database>>, ApiError> {
-//     state.db.send(GetSession(session_id));
-//     // db_sessions
-//     //     .get(&*session_id)
-//     //     .ok_or(ApiError::NoDbSession)
-//     //     .and_then(|db_session| match db_session.get() {
-//     //         Ok(db_conn) => PgDatabaseConnection::get_databases(db_conn)
-//     //             .map(Json)
-//     //             .map_err(ApiError::from),
-//     //         Err(_) => Err(ApiError::NoDbSession),
-//     //     })
-// }
+pub fn get_databases(
+    session_id: SessionId,
+    state: State<AppState>,
+) -> Result<Json<Vec<Database>>, ApiError> {
+    let a = state
+        .db
+        .send(GetSession(session_id))
+        .from_err()
+        .and_then(|res| res)
+        .responder();
+    Ok()
+    // db_sessions
+    //     .get(&*session_id)
+    //     .ok_or(ApiError::NoDbSession)
+    //     .and_then(|db_session| match db_session.get() {
+    //         Ok(db_conn) => PgDatabaseConnection::get_databases(db_conn)
+    //             .map(Json)
+    //             .map_err(ApiError::from),
+    //         Err(_) => Err(ApiError::NoDbSession),
+    //     })
+}
 
 fn main() {
     env::set_var("RUST_LOG", "actix_web=info");
@@ -161,7 +167,9 @@ fn main() {
         App::with_state(AppState { db: addr.clone() })
             .middleware(middleware::Logger::default())
             .resource("/connect", |r| r.route().with2(connect))
-        // .resource("/", |r| r.route().filter(XSessionHeader).with2(index))
+            .resource("/", |r| {
+                r.route().filter(XSessionHeader).with2(get_databases)
+            })
     }).bind("127.0.0.1:8000")
         .unwrap()
         .start();

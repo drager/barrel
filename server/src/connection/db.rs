@@ -10,7 +10,7 @@ impl Actor for DbExecutor {
     type Context = SyncContext<Self>;
 }
 
-impl Actor for DbSessions {
+impl Actor for GetSession {
     type Context = SyncContext<Self>;
 }
 
@@ -31,11 +31,11 @@ impl Handler<ConnectionData> for DbExecutor {
     }
 }
 
-impl Handler<SessionId> for DbSessions {
+impl Handler<SessionId> for GetSession {
     type Result = Result<Pool, PgError>;
 
-    fn handle(&mut self, msg: SessionId, _: &mut Self::Context) -> Self::Result {
-        let db_session = self.get(&msg);
+    fn handle(&mut self, msg: SessionId, _ctx: &mut Self::Context) -> Self::Result {
+        let db_session = self.0.get(&msg);
         // let c = DbSessions::get(*self.0, &msg);
         db_session
             .ok_or(PgError::NoDbSession)
