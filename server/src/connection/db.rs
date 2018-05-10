@@ -8,7 +8,9 @@ pub struct DbExecutor(pub LockedSession);
 #[derive(Debug)]
 pub struct GetSession(pub SessionId);
 #[derive(Debug)]
-pub struct ActiveSessions(pub DbSessions);
+pub struct ActiveSessions {
+    db_sessions: DbSessions,
+}
 
 impl Actor for DbExecutor {
     type Context = SyncContext<Self>;
@@ -44,16 +46,20 @@ impl Handler<GetSession> for DbExecutor {
 
     fn handle(&mut self, msg: GetSession, _ctx: &mut Self::Context) -> Self::Result {
         println!("In get session handle {:?}", msg);
+
         // let locked_session = self.0;GetSession
         let result = self.0
             .read()
             // .map(|session| (&*session).clone())
-            .map_err(|_err| PgError::NoDbSession)
+            .map_err(|_err| PgError::CouldNotWriteDbSession)
             .and_then(|sessions| {
+                println!("sessions in ghandler {:?}", sessions);
                 DbSessions::get(&sessions, &msg.0)
                     .ok_or(PgError::NoDbSession)
                     .map(|s| s.to_owned())
             });
+        println!("result {:?}", result);
+
         // .map(|s| s.to_owned());
         // let result = match locked_session.read() {
         //     Ok(session) => Ok((&*session).clone()),

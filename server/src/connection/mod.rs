@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::RwLock;
 use uuid::{self, Uuid};
+use std::fmt::{self, Display};
 
 pub trait DatabaseConnection {
     type Connection;
@@ -77,12 +78,18 @@ pub struct DbSessions(HashMap<Uuid, Pool>);
 
 pub type LockedSession = RwLock<DbSessions>;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
 pub struct SessionId(pub Uuid);
 
 impl SessionId {
     pub fn is_valid(key: &str) -> Result<SessionId, uuid::ParseError> {
         Uuid::parse_str(key).map(SessionId)
+    }
+}
+
+impl Display for SessionId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 

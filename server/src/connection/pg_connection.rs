@@ -1,9 +1,12 @@
-use connection::{ConnectionData, Database, DatabaseConnection, LockedSession, SessionId, Table};
+use connection::{ConnectionData, Database, DatabaseConnection, DbSessions, LockedSession,
+                 SessionId, Table};
 use postgres::params::{ConnectParams, Host};
 use postgres::{self, Connection as PgConnection, TlsMode};
 use r2d2::{self, PooledConnection};
 use r2d2_postgres::{PostgresConnectionManager, TlsMode as R2D2TlsMode};
 use uuid::Uuid;
+use std::fmt;
+use std::sync::{PoisonError, RwLock};
 
 #[derive(Serialize)]
 pub struct PgDatabaseConnection {}
@@ -32,7 +35,7 @@ impl DatabaseConnection for PgDatabaseConnection {
 
     fn connect(
         connection_data: ConnectionData,
-        db_session: &LockedSession,
+        db_sessions: &LockedSession,
     ) -> Result<SessionId, Self::Error> {
         let ConnectionData {
             port,
@@ -48,11 +51,13 @@ impl DatabaseConnection for PgDatabaseConnection {
             .build(Host::Tcp(host.to_owned()));
 
         PgDatabaseConnection::init_db_pool(params)
-            .map(|connection| match db_session.write() {
-                Ok(mut session) => {
-                    println!("session: {:?}", session);
+            .map(|connection| match db_sessions.write() {
+                Ok(mut sessions) => {
                     let session_id = Uuid::new_v4();
-                    session.add(session_id, connection);
+                    sessions.add(session_id, connection);
+                    println!("sessions: {:?}", sessions);
+                    let new_sessions = sessions.get(&session_id);
+                    println!("new_sessions: {:?}", new_sessions);
                     Ok(SessionId(session_id))
                 }
                 Err(err) => {
@@ -123,12 +128,15 @@ impl DatabaseConnection for PgDatabaseConnection {
     }
 }
 
+type LockedSessionPoisionError = PoisonError<RwLock<DbSessions>>;
+
 #[derive(Debug)]
 pub enum PgError {
     PostgresError(postgres::Error),
     PoolError(r2d2::Error),
     NoDbSession,
     CouldNotWriteDbSession,
+    LockedSessionError(LockedSessionPoisionError),
 }
 
 impl From<postgres::Error> for PgError {
@@ -140,6 +148,18 @@ impl From<postgres::Error> for PgError {
 impl From<r2d2::Error> for PgError {
     fn from(err: r2d2::Error) -> PgError {
         PgError::PoolError(err)
+    }
+}
+
+impl From<LockedSessionPoisionError> for PgError {
+    fn from(err: LockedSessionPoisionError) -> PgError {
+        PgError::LockedSessionError(err)
+    }
+}
+
+impl fmt::Display for PgError {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(formatter, "{}", self)
     }
 }
 
