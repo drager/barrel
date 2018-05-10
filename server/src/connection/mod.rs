@@ -6,7 +6,7 @@ use r2d2;
 use r2d2_postgres::PostgresConnectionManager;
 use std::collections::HashMap;
 use std::ops::Deref;
-use std::sync::RwLock;
+use std::sync::{Arc, Mutex, RwLock};
 use uuid::{self, Uuid};
 use std::fmt::{self, Display};
 
@@ -21,7 +21,7 @@ pub trait DatabaseConnection {
     // fn connect(config: Self::ConnectConfig) -> Result<Self::Connection, Self::ConnectionError>;
     fn connect(
         connection_data: ConnectionData,
-        db_session: &LockedSession,
+        db_sessions: &ArcSessions,
     ) -> Result<SessionId, Self::Error>;
     fn init_db_pool(config: Self::ConnectConfig) -> Result<Self::Pool, Self::Error>;
     fn get_databases(db_conn: Self::Connection) -> Result<Vec<Database>, Self::Error>;
@@ -69,13 +69,14 @@ impl DbSessions {
     }
 }
 
-pub fn init_sessions() -> LockedSession {
-    RwLock::new(DbSessions(HashMap::new()))
+pub fn init_sessions() -> ArcSessions {
+    Arc::new(Mutex::new(DbSessions(HashMap::new())))
 }
 
 #[derive(Debug, Clone)]
 pub struct DbSessions(HashMap<Uuid, Pool>);
 
+pub type ArcSessions = Arc<Mutex<DbSessions>>;
 pub type LockedSession = RwLock<DbSessions>;
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone)]
@@ -84,6 +85,10 @@ pub struct SessionId(pub Uuid);
 impl SessionId {
     pub fn is_valid(key: &str) -> Result<SessionId, uuid::ParseError> {
         Uuid::parse_str(key).map(SessionId)
+    }
+
+    pub fn new() -> Self {
+        SessionId(Uuid::new_v4())
     }
 }
 

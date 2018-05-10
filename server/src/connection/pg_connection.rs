@@ -1,12 +1,11 @@
-use connection::{ConnectionData, Database, DatabaseConnection, DbSessions, LockedSession,
-                 SessionId, Table};
+use connection::{ArcSessions, ConnectionData, Database, DatabaseConnection, DbSessions, SessionId,
+                 Table};
+use postgres;
 use postgres::params::{ConnectParams, Host};
-use postgres::{self, Connection as PgConnection, TlsMode};
 use r2d2::{self, PooledConnection};
 use r2d2_postgres::{PostgresConnectionManager, TlsMode as R2D2TlsMode};
-use uuid::Uuid;
 use std::fmt;
-use std::sync::{PoisonError, RwLock};
+use std::sync::{Arc, PoisonError, RwLock};
 
 #[derive(Serialize)]
 pub struct PgDatabaseConnection {}
@@ -35,7 +34,7 @@ impl DatabaseConnection for PgDatabaseConnection {
 
     fn connect(
         connection_data: ConnectionData,
-        db_sessions: &LockedSession,
+        db_sessions: &ArcSessions,
     ) -> Result<SessionId, Self::Error> {
         let ConnectionData {
             port,
@@ -51,19 +50,34 @@ impl DatabaseConnection for PgDatabaseConnection {
             .build(Host::Tcp(host.to_owned()));
 
         PgDatabaseConnection::init_db_pool(params)
-            .map(|connection| match db_sessions.write() {
-                Ok(mut sessions) => {
-                    let session_id = Uuid::new_v4();
-                    sessions.add(session_id, connection);
-                    println!("sessions: {:?}", sessions);
-                    let new_sessions = sessions.get(&session_id);
-                    println!("new_sessions: {:?}", new_sessions);
-                    Ok(SessionId(session_id))
-                }
-                Err(err) => {
-                    println!("Err in connect: {:?}", err);
-                    Err(PgError::CouldNotWriteDbSession)
-                }
+            .map(|connection| {
+                println!("In PgDatabaseConnection match {:?}", db_sessions);
+                let session_id = SessionId::new();
+                let mut db_sessions = db_sessions.lock().unwrap();
+                db_sessions.add(*session_id, connection);
+                // Arc::get_mut(db_sessions);
+                // if let Some(mut sessions) = Arc::get(db_sessions) {
+                //     println!("{}", sessions);
+                // }
+                // s.add(*session_id, connection);
+                // println!("sessions: {:?}", db_sessions);
+                // let new_sessions = sessions.get(&session_id);
+                // println!("new_sessions: {:?}", new_sessions);
+                Ok(session_id)
+                // match *db_sessions {
+                //     Ok(mut sessions) => {
+                //         let session_id = SessionId::new();
+                //         sessions.add(*session_id, connection);
+                //         println!("sessions: {:?}", sessions);
+                //         let new_sessions = sessions.get(&session_id);
+                //         println!("new_sessions: {:?}", new_sessions);
+                //         Ok(session_id)
+                //     }
+                //     Err(err) => {
+                //         println!("Err in connect: {:?}", err);
+                //         Err(PgError::CouldNotWriteDbSession)
+                //     }
+                // }
             })
             .map_err(|err| {
                 println!("ERR In init {:?}", err);

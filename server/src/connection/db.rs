@@ -1,15 +1,16 @@
 use actix::{Actor, Handler, Message, SyncContext};
 use connection::pg_connection::{PgDatabaseConnection, PgError};
-use connection::Pool;
+use connection::{ArcSessions, Pool};
 use connection::{ConnectionData, DatabaseConnection, DbSessions, LockedSession, SessionId};
+use std::sync::Arc;
 
 #[derive(Debug)]
-pub struct DbExecutor(pub LockedSession);
+pub struct DbExecutor(pub ArcSessions);
 #[derive(Debug)]
 pub struct GetSession(pub SessionId);
 #[derive(Debug)]
 pub struct ActiveSessions {
-    db_sessions: DbSessions,
+    locked_session: LockedSession,
 }
 
 impl Actor for DbExecutor {
@@ -36,8 +37,8 @@ impl Handler<ConnectionData> for DbExecutor {
     type Result = Result<SessionId, PgError>;
 
     fn handle(&mut self, msg: ConnectionData, _: &mut Self::Context) -> Self::Result {
-        let db_session = &self.0;
-        PgDatabaseConnection::connect(msg, db_session)
+        let db_sessions = &self.0;
+        PgDatabaseConnection::connect(msg, db_sessions)
     }
 }
 
@@ -46,11 +47,8 @@ impl Handler<GetSession> for DbExecutor {
 
     fn handle(&mut self, msg: GetSession, _ctx: &mut Self::Context) -> Self::Result {
         println!("In get session handle {:?}", msg);
-
-        // let locked_session = self.0;GetSession
-        let result = self.0
-            .read()
-            // .map(|session| (&*session).clone())
+        let db_sessions = self.0.lock();
+        let result = db_sessions
             .map_err(|_err| PgError::CouldNotWriteDbSession)
             .and_then(|sessions| {
                 println!("sessions in ghandler {:?}", sessions);
