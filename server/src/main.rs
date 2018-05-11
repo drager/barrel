@@ -10,11 +10,15 @@ extern crate serde_json;
 use actix::{Addr, Syn, SyncArbiter};
 use actix_web::pred::Predicate;
 use actix_web::server;
-use actix_web::{error, http, middleware, test, App, AsyncResponder, Error, FutureResponse,
-                HttpMessage, HttpRequest, HttpResponse, Json, Responder, State};
-use database_manager::connection::db::{DbExecutor, GetSession};
+use actix_web::{
+    error, http, middleware, test, App, AsyncResponder, Error, FutureResponse, HttpMessage,
+    HttpRequest, HttpResponse, Json, Path, Responder, State,
+};
+use database_manager::connection::db::{get_db_session, DbExecutor, GetSession};
 use database_manager::connection::pg_connection::{PgDatabaseConnection, PgError};
-use database_manager::connection::{init_sessions, ConnectionData, DatabaseConnection, SessionId};
+use database_manager::connection::{
+    init_sessions, ConnectionData, DatabaseConnection, SessionId, Table,
+};
 use futures::Future;
 use std::env;
 
@@ -159,6 +163,108 @@ pub fn get_databases(req: HttpRequest<AppState>) -> Result<FutureResponse<HttpRe
         .ok_or(ApiError::BadClientData)
 }
 
+// ) -> impl Future<Item = Result<SessionId, PgError>, Error = actix::MailboxError> {
+// pub fn get_session(session_id: SessionId, state: &AppState) {
+//     let a: Box<
+//         Future<
+//             Item = Result<
+//                 r2d2::PooledConnection<r2d2_postgres::PostgresConnectionManager>,
+//                 PgError,
+//             >,
+//             Error = PgError,
+//         >,
+//     > = Box::new(
+//         state
+//             .db
+//             .send(GetSession(session_id))
+//             .map_err(|_| PgError::NoDbSession)
+//             .and_then(move |res| {
+//                 res.map(|db_session| {
+//                     db_session.get().map_err(|_| PgError::NoDbSession)
+//                     // .map(|db_conn| db_conn)
+//                 })
+//             }),
+//     );
+//     a
+//     // .responder()
+// }
+
+pub fn connection_retry(
+    req: HttpRequest<AppState>,
+) -> Result<FutureResponse<HttpResponse>, ApiError> {
+    get_session_id_from_request(&req)
+        .map(|session_id| {
+            req.state()
+                .db
+                .send(GetSession(session_id))
+                .from_err()
+                .and_then(move |res| match res {
+                    Ok(db_session) => db_session
+                        .get()
+                        .map_err(|err| actix_web::error::ErrorBadRequest(err))
+                        .and_then(|_db_conn| Ok(HttpResponse::Ok().json(session_id))),
+                    Err(err) => match err {
+                        PgError::NoDbSession => Ok(create_bad_request_response(&format!(
+                            "No session could be found with session id: {}",
+                            session_id
+                        ))?),
+                        _ => Ok(HttpResponse::InternalServerError().into()),
+                    },
+                })
+                .responder()
+        })
+        .ok_or(ApiError::BadClientData)
+
+    // db_sessions
+    //     .get(&*session_id)
+    //     .ok_or(ApiError::NoDbSession)
+    //     .and_then(|db_session| match db_session.get() {
+    //         Ok(_db_conn) => Ok(Json(ConnectionResponse {
+    //             session_id: session_id.clone(),
+    //             status: Status::Ok,
+    //         })),
+    //         Err(_) => Err(ApiError::NoDbSession),
+    //     })
+}
+
+// #[get("/databases/<database_name>/tables")]
+pub fn get_tables(
+    req: HttpRequest<AppState>,
+    database_name: Path<&str>,
+) -> FutureResponse<HttpResponse> {
+    let a = database_name;
+    // ) -> Result<Json<Vec<Table>>, ApiError> {
+    // let s = req.state().db;
+    println!("database_name {}", a.into_inner());
+    let session_id = SessionId::new();
+    Box::new(
+        get_db_session(session_id, &req.state().db)
+            // .from_err()
+            .map_err(|err| actix_web::error::ErrorBadRequest(err))
+            .and_then(|db_conn| match db_conn {
+                Ok(db_conn) => PgDatabaseConnection::get_tables(db_conn)
+                    .map_err(|err| actix_web::error::ErrorBadRequest(err))
+                    .map(|databases| HttpResponse::Ok().json(databases)),
+                Err(_) => Ok(HttpResponse::InternalServerError().into()),
+            }),
+    )
+    // .responder()
+
+    // Err(ApiError::BadClientData)
+    // db_sessions
+    //     .get(&*session_id)
+    //     .ok_or(ApiError::NoDbSession)
+    //     .and_then(|db_session| match db_session.get() {
+    //         Ok(db_conn) => {
+    //             println!("db_session {:?}", db_session);
+    //             println!("dbconn{:?}", db_conn);
+    //             PgDatabaseConnection::get_tables(db_conn).map_err(ApiError::from)
+    //         }
+    //         Err(_) => Err(ApiError::NoDbSession),
+    //     })
+    //     .map(|table| format_data_as_json(table, None))
+}
+
 fn main() {
     env::set_var("RUST_LOG", "actix_web=info");
     env_logger::init();
@@ -173,6 +279,9 @@ fn main() {
             .middleware(middleware::Logger::default())
             .resource("/connect", |r| r.route().with2(connect))
             .resource("/databases", |r| {
+                r.route().filter(XSessionHeader).f(get_databases)
+            })
+            .resource("/tables/{database_name}", |r| {
                 r.route().filter(XSessionHeader).f(get_databases)
             })
     }).bind("127.0.0.1:8000")

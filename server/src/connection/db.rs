@@ -1,7 +1,10 @@
-use actix::{Actor, Handler, Message, SyncContext};
+use actix::{Actor, Addr, Handler, Message, Syn, SyncContext};
 use connection::pg_connection::{PgDatabaseConnection, PgError};
 use connection::{ArcSessions, Pool};
 use connection::{ConnectionData, DatabaseConnection, DbSessions, SessionId};
+use futures::Future;
+use r2d2;
+use r2d2_postgres;
 
 #[derive(Debug)]
 pub struct DbExecutor(pub ArcSessions);
@@ -44,4 +47,19 @@ impl Handler<GetSession> for DbExecutor {
             });
         result
     }
+}
+
+pub fn get_db_session(
+    session_id: SessionId,
+    state: &Addr<Syn, DbExecutor>,
+) -> impl Future<
+    Item = Result<r2d2::PooledConnection<r2d2_postgres::PostgresConnectionManager>, PgError>,
+    Error = PgError,
+> {
+    state
+        .send(GetSession(session_id))
+        .map_err(|_| PgError::NoDbSession)
+        .and_then(move |res| {
+            res.map(|db_session| db_session.get().map_err(|_| PgError::NoDbSession))
+        })
 }
