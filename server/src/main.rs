@@ -8,9 +8,9 @@ extern crate serde_derive;
 extern crate serde_json;
 
 use actix::{Addr, Syn, SyncArbiter};
+use actix_web::http::header;
 use actix_web::pred::Predicate;
 use actix_web::server;
-use actix_web::http::header;
 use actix_web::{error, http, middleware, test, App, AsyncResponder, Error, FutureResponse,
                 HttpMessage, HttpRequest, HttpResponse, Json, Responder, State};
 use database_manager::connection::db::{DbExecutor, GetSession};
@@ -232,7 +232,8 @@ fn main() {
 
     let sys = actix::System::new("barrel");
 
-    let addr = SyncArbiter::start(3, move || DbExecutor(init_sessions()));
+    let sessions = init_sessions();
+    let addr = SyncArbiter::start(3, move || DbExecutor(sessions.clone()));
 
     server::new(move || {
         App::with_state(AppState { db: addr.clone() })
