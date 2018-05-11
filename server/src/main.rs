@@ -8,7 +8,6 @@ extern crate serde_derive;
 extern crate serde_json;
 
 use actix::{Addr, Syn, SyncArbiter};
-use actix_web::http::header;
 use actix_web::pred::Predicate;
 use actix_web::server;
 use actix_web::{error, http, middleware, test, App, AsyncResponder, Error, FutureResponse,
@@ -70,12 +69,7 @@ fn get_session_id_from_request<T>(request: &HttpRequest<T>) -> Option<SessionId>
 
 impl<S: 'static> Predicate<S> for XSessionHeader {
     fn check(&self, req: &mut HttpRequest<S>) -> bool {
-        println!("req {:?}", req);
-
-        let valid = get_session_id_from_request(&req.clone()).map_or(false, |_| true);
-        println!("valid: {}", valid);
-        valid
-        // req.headers().contains_key("X-Session-Id")
+        get_session_id_from_request(&req.clone()).map_or(false, |_| true)
     }
 }
 
@@ -117,113 +111,52 @@ fn connect(
     connection_data: Json<ConnectionData>,
     state: State<AppState>,
 ) -> FutureResponse<HttpResponse> {
-    let connection_data: ConnectionData = connection_data.into_inner();
-    let a = state
+    state
         .db
-        .send(connection_data)
+        .send(connection_data.into_inner())
         .from_err()
         .and_then(|res| match res {
             Ok(session) => Ok(HttpResponse::Ok().json(session)),
-            Err(err) => {
-                println!("wop wop err {:?}", err);
-                match err {
-                    PgError::PoolError(_pool_error) => {
-                        Ok(create_bad_request_response("Connection refused")?)
-                    }
-                    _ => Ok(HttpResponse::InternalServerError().into()),
+            Err(err) => match err {
+                PgError::PoolError(_pool_error) => {
+                    Ok(create_bad_request_response("Connection refused")?)
                 }
-            }
-        });
-    a.responder()
-    // state.db.send(SessionId).responder()
-    // state.db
-    // let result: Result<Json<Database>, SError> = Ok(database);
-    // let a = Ok(result.map_err(|err| actix_web::error::ErrorBadRequest(err))?);
-    // HttpResponse::Ok().into()
+                _ => Ok(HttpResponse::InternalServerError().into()),
+            },
+        })
+        .responder()
 }
 
-pub fn get_databases(
-    req: HttpRequest<AppState> // state: State, // session_id: Json<SessionId>, // state: State<AppState>
-) -> FutureResponse<HttpResponse> {
+pub fn get_databases(req: HttpRequest<AppState>) -> Result<FutureResponse<HttpResponse>, ApiError> {
     get_session_id_from_request(&req)
         .map(|session_id| {
-            println!("GET SESS {:?}", session_id);
-            let future = req.state()
+            req.state()
                 .db
                 .send(GetSession(session_id))
                 .from_err()
-                .and_then(move |res| {
-                    match res {
-                        Ok(db_session) => db_session
-                            .get()
-                            .map_err(|err| actix_web::error::ErrorBadRequest(err))
-                            .and_then(|db_conn| {
-                                PgDatabaseConnection::get_databases(db_conn)
-                                    .map_err(|err| actix_web::error::ErrorBadRequest(err))
-                                    .map(|databases| HttpResponse::Ok().json(databases))
-                            }),
-                        Err(err) => {
-                            println!("Err in match {:?}", err);
-                            match err {
-                                PgError::NoDbSession => Ok(create_bad_request_response(&format!(
-                                    "No session could be found with session id: {}",
-                                    session_id
-                                ))?),
-                                _ => Ok(HttpResponse::InternalServerError().into()),
-                            }
-                            // Ok(HttpResponse::InternalServerError().into())
+                .and_then(move |res| match res {
+                    Ok(db_session) => db_session
+                        .get()
+                        .map_err(|err| actix_web::error::ErrorBadRequest(err))
+                        .and_then(|db_conn| {
+                            PgDatabaseConnection::get_databases(db_conn)
+                                .map_err(|err| actix_web::error::ErrorBadRequest(err))
+                                .map(|databases| HttpResponse::Ok().json(databases))
+                        }),
+                    Err(err) => {
+                        println!("Err in match {:?}", err);
+                        match err {
+                            PgError::NoDbSession => Ok(create_bad_request_response(&format!(
+                                "No session could be found with session id: {}",
+                                session_id
+                            ))?),
+                            _ => Ok(HttpResponse::InternalServerError().into()),
                         }
                     }
-                    // let c = match res {
-                    //     Ok(db_session) => db_session.get().map(|db_conn| {
-                    //         PgDatabaseConnection::get_databases(db_conn)
-                    //             .map(|databases| HttpResponse::Ok().json(databases))
-                    //     }),
-                    //     Err(err) => Ok(actix_web::error::ErrorBadRequest(err)),
-                    // };
-                    // let result: Result<HttpResponse, actix_web::error::Error> =
-                    //     Ok(HttpResponse::InternalServerError().into());
-                    // result
-                });
-            // let future = req.state()
-            //     .db
-            //     .send(GetSession(session_id))
-            //     .from_err()
-            //     .and_then(|res| match res {
-            //         Ok(db_session) => match db_session.get() {
-            //             Ok(db_conn) => PgDatabaseConnection::get_databases(db_conn)
-            //                 .map(|databases| HttpResponse::Ok().json(databases)),
-
-            //             Err(err) => Ok(HttpResponse::InternalServerError().into()),
-            //         },
-            //         Err(err) => Ok(HttpResponse::InternalServerError().into()),
-            //     })
-            //     .responder();
-
-            future.responder()
-            // println!("S: {:?}", s);
+                })
+                .responder()
         })
-        .unwrap()
-    // println!("req in route {:?}", req);
-    // println!("session_id in route {:?}", session_id);
-    // println!("session id {:?}", session_id);
-    // let a = state.db;
-    // let a = state
-    //     .db
-    //     .send(GetSession(session_id))
-    //     .from_err()
-    //     .and_then(|res| res)
-    //     .responder();
-    // Ok(Json(vec![]))
-    // db_sessions
-    //     .get(&*session_id)
-    //     .ok_or(ApiError::NoDbSession)
-    //     .and_then(|db_session| match db_session.get() {
-    //         Ok(db_conn) => PgDatabaseConnection::get_databases(db_conn)
-    //             .map(Json)
-    //             .map_err(ApiError::from),
-    //         Err(_) => Err(ApiError::NoDbSession),
-    //     })
+        .ok_or(ApiError::BadClientData)
 }
 
 fn main() {

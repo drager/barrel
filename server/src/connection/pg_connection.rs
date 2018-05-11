@@ -5,7 +5,7 @@ use postgres::params::{ConnectParams, Host};
 use r2d2::{self, PooledConnection};
 use r2d2_postgres::{PostgresConnectionManager, TlsMode as R2D2TlsMode};
 use std::fmt;
-use std::sync::{Arc, PoisonError, RwLock};
+use std::sync::{PoisonError, RwLock};
 
 #[derive(Serialize)]
 pub struct PgDatabaseConnection {}
@@ -49,40 +49,12 @@ impl DatabaseConnection for PgDatabaseConnection {
             .database(&database)
             .build(Host::Tcp(host.to_owned()));
 
-        PgDatabaseConnection::init_db_pool(params)
-            .map(|connection| {
-                println!("In PgDatabaseConnection match {:?}", db_sessions);
-                let session_id = SessionId::new();
-                let mut db_sessions = db_sessions.lock().unwrap();
-                db_sessions.add(*session_id, connection);
-                // Arc::get_mut(db_sessions);
-                // if let Some(mut sessions) = Arc::get(db_sessions) {
-                //     println!("{}", sessions);
-                // }
-                // s.add(*session_id, connection);
-                // println!("sessions: {:?}", db_sessions);
-                // let new_sessions = sessions.get(&session_id);
-                // println!("new_sessions: {:?}", new_sessions);
-                Ok(session_id)
-                // match *db_sessions {
-                //     Ok(mut sessions) => {
-                //         let session_id = SessionId::new();
-                //         sessions.add(*session_id, connection);
-                //         println!("sessions: {:?}", sessions);
-                //         let new_sessions = sessions.get(&session_id);
-                //         println!("new_sessions: {:?}", new_sessions);
-                //         Ok(session_id)
-                //     }
-                //     Err(err) => {
-                //         println!("Err in connect: {:?}", err);
-                //         Err(PgError::CouldNotWriteDbSession)
-                //     }
-                // }
-            })
-            .map_err(|err| {
-                println!("ERR In init {:?}", err);
-                err
-            })?
+        PgDatabaseConnection::init_db_pool(params).map(|connection| {
+            let session_id = SessionId::new();
+            let mut db_sessions = db_sessions.lock().unwrap();
+            db_sessions.add(*session_id, connection);
+            Ok(session_id)
+        })?
     }
 
     fn get_databases(db_conn: Self::Connection) -> Result<Vec<Database>, Self::Error> {
