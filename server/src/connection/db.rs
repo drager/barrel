@@ -51,7 +51,7 @@ impl Handler<GetSession> for DbExecutor {
 
 pub fn get_db_session(
     session_id: SessionId,
-    state: &Addr<Syn, DbExecutor>,
+    state: Addr<Syn, DbExecutor>,
 ) -> impl Future<
     Item = Result<r2d2::PooledConnection<r2d2_postgres::PostgresConnectionManager>, PgError>,
     Error = PgError,
@@ -59,7 +59,30 @@ pub fn get_db_session(
     state
         .send(GetSession(session_id))
         .map_err(|_| PgError::NoDbSession)
+        .from_err()
         .and_then(move |res| {
             res.map(|db_session| db_session.get().map_err(|_| PgError::NoDbSession))
         })
+
+    // .from_err()
+    // .and_then(move |res| match res {
+    //     Ok(db_session) => db_session
+    //         .get()
+    //         .map_err(|err| actix_web::error::ErrorBadRequest(err))
+    //         .and_then(|db_conn| {
+    //             PgDatabaseConnection::get_databases(db_conn)
+    //                 .map_err(|err| actix_web::error::ErrorBadRequest(err))
+    //                 .map(|databases| HttpResponse::Ok().json(databases))
+    //         }),
+    //     Err(err) => {
+    //         println!("Err in match {:?}", err);
+    //         match err {
+    //             PgError::NoDbSession => Ok(create_bad_request_response(&format!(
+    //                 "No session could be found with session id: {}",
+    //                 session_id
+    //             ))?),
+    //             _ => Ok(HttpResponse::InternalServerError().into()),
+    //         }
+    //     }
+    // })
 }
