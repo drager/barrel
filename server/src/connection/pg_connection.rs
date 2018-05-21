@@ -1,5 +1,6 @@
-use connection::{ArcSessions, ConnectionData, Database, DatabaseConnection, DbSessions, SessionId,
-                 Table};
+use connection::{
+    ArcSessions, ConnectionData, Database, DatabaseConnection, DbSessions, SessionId, Table,
+};
 use postgres;
 use postgres::params::{ConnectParams, Host};
 use r2d2::{self, PooledConnection};
@@ -144,13 +145,7 @@ impl From<LockedSessionPoisionError> for PgError {
 }
 
 impl fmt::Display for PgError {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(formatter, "{}", self)
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "PgError")
     }
 }
-
-// impl From<NoDbSession> for PgError {
-//     fn from(err: NoDbSession) -> PgError {
-//         PgError::NoDbSession
-//     }
-// }

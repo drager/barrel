@@ -1,14 +1,13 @@
 pub mod db;
 pub mod pg_connection;
 
-// use connection::pg_connection::PgDatabaseError;
 use r2d2;
 use r2d2_postgres::PostgresConnectionManager;
 use std::collections::HashMap;
+use std::fmt::{self, Display};
 use std::ops::Deref;
 use std::sync::{Arc, Mutex, RwLock};
 use uuid::{self, Uuid};
-use std::fmt::{self, Display};
 
 pub trait DatabaseConnection {
     type Connection;
