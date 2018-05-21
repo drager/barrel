@@ -8,7 +8,7 @@
       "type": "lldb",
       "request": "launch",
       "name": "Debug",
-      "program": "${workspaceRoot}/server/target/debug/database-manager",
+      "program": "${workspaceRoot}/target/debug/database-manager",
       "args": [],
       "cwd": "${workspaceRoot}"
     }
