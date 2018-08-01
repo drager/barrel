@@ -52,7 +52,7 @@ struct ErrorResponse {
     error: String,
 }
 
-const X_SESSION_HEADER: &str = "X-Session-Id";
+pub const X_SESSION_HEADER: &str = "X-Session-Id";
 
 pub struct XSessionHeader;
 
